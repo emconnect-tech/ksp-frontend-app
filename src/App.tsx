@@ -4,6 +4,9 @@ import { Dashboard } from './pages/Dashboard';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { Login } from './pages/Login';
 import { RawMaterials } from './pages/RawMaterials';
+import { StockIn } from './pages/StockIn';
+import { Bookings } from './pages/Bookings';
+import { AdminSettings } from './pages/AdminSettings';
 
 function App() {
   return (
@@ -19,10 +22,11 @@ function App() {
           
           {/* Other Routes */}
           <Route path="materials" element={<RawMaterials />} />
-          <Route path="bookings" element={<PlaceholderPage title="Orders & Bookings" />} />
+          <Route path="stock-in" element={<StockIn />} />
+          <Route path="bookings" element={<Bookings />} />
           <Route path="clients" element={<PlaceholderPage title="Clients" />} />
           <Route path="wallet" element={<PlaceholderPage title="Wallet" />} />
-          <Route path="profile" element={<PlaceholderPage title="Profile" />} />
+          <Route path="profile" element={<AdminSettings />} />
         </Route>
       </Routes>
     </BrowserRouter>

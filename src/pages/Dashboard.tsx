@@ -27,7 +27,7 @@ export const Dashboard = () => {
         <h2 style={{ fontSize: '1.2rem', marginBottom: 'var(--space-4)' }}>Quick Actions</h2>
         <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
           <Button variant="outline" onClick={() => window.location.href='/materials'}>+ Raw Material</Button>
-          <Button variant="outline">+ Stock In</Button>
+          <Button variant="outline" onClick={() => window.location.href='/stock-in'}>+ Stock In</Button>
           <Button variant="outline">+ New Order</Button>
         </div>
       </section>
