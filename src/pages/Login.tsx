@@ -13,6 +13,9 @@ export const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Locally this is empty (uses proxy). In production, Vercel injects the backend URL.
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (phone.length >= 10) {
@@ -28,7 +31,7 @@ export const Login = () => {
       }
 
       try {
-        const response = await fetch('/api/v1/auth/send-otp', {
+        const response = await fetch(`${API_BASE_URL}/api/v1/auth/send-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phoneNumber: phone })
@@ -67,7 +70,7 @@ export const Login = () => {
       }
 
       try {
-        const response = await fetch('/api/v1/auth/verify-otp', {
+        const response = await fetch(`${API_BASE_URL}/api/v1/auth/verify-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessionId, otp })
