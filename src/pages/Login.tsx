@@ -3,25 +3,87 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '../design-system/components/ui/Button';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
+import { config } from '../config';
 
 export const Login = () => {
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSendOtp = (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (phone.length >= 10) {
-      setStep('otp');
+      setLoading(true);
+
+      if (config.USE_MOCK_API) {
+        setTimeout(() => {
+          setSessionId('mock-session-id-1234');
+          setStep('otp');
+          setLoading(false);
+        }, 800);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/v1/auth/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phoneNumber: phone })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setSessionId(data.sessionId);
+          setStep('otp');
+        } else {
+          alert('Failed to send OTP');
+        }
+      } catch (err) {
+        alert('Error connecting to server');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
-  const handleVerifyOtp = (e: React.FormEvent) => {
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp.length === 6) {
-      // Mock successful login, redirect to dashboard
-      navigate('/');
+    if (otp.length > 0 && sessionId) {
+      setLoading(true);
+
+      if (config.USE_MOCK_API) {
+        setTimeout(() => {
+          if (otp === '1234') {
+            localStorage.setItem('ksp_token', 'mock_jwt_token_for_development');
+            navigate('/');
+          } else {
+            alert('Invalid Mock OTP. Use 1234.');
+            setLoading(false);
+          }
+        }, 800);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/v1/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, otp })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem('ksp_token', data.accessToken);
+          navigate('/');
+        } else {
+          alert('Invalid OTP');
+        }
+      } catch (err) {
+        alert('Error connecting to server');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -69,10 +131,11 @@ export const Login = () => {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   autoFocus
+                  disabled={loading}
                 />
               </div>
-              <Button variant="primary" style={{ width: '100%', padding: 'var(--space-4)' }}>
-                Send OTP
+              <Button variant="primary" style={{ width: '100%', padding: 'var(--space-4)' }} disabled={loading}>
+                {loading ? 'Sending...' : 'Send OTP'}
               </Button>
             </form>
           ) : (
@@ -85,16 +148,17 @@ export const Login = () => {
               <div style={{ marginBottom: 'var(--space-6)' }}>
                 <Input 
                   type="text" 
-                  placeholder="Enter 6-digit code" 
+                  placeholder="Enter 4-digit code (Hint: 1234)" 
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                   maxLength={6}
                   style={{ textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.25em' }}
                   autoFocus
+                  disabled={loading}
                 />
               </div>
-              <Button variant="primary" style={{ width: '100%', padding: 'var(--space-4)' }}>
-                Verify & Login
+              <Button variant="primary" style={{ width: '100%', padding: 'var(--space-4)' }} disabled={loading}>
+                {loading ? 'Verifying...' : 'Verify & Login'}
               </Button>
             </form>
           )}
