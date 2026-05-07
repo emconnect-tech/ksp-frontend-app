@@ -4,6 +4,7 @@ import { Button } from '../design-system/components/ui/Button';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
 import { config } from '../config';
+import { useAuth } from '../contexts/AuthContext';
 
 export const Login = () => {
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
@@ -12,13 +13,28 @@ export const Login = () => {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   // Locally this is empty (uses proxy). In production, Vercel injects the backend URL.
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, ''); // Only numbers
+    if (value.length <= 10) {
+      setPhone(value);
+    }
+  };
+
+  const handleOtpChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, ''); // Only numbers
+    if (value.length <= 4) {
+      setOtp(value);
+    }
+  };
+
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (phone.length >= 10) {
+    if (phone.length === 10) {
       setLoading(true);
 
       if (config.USE_MOCK_API) {
@@ -31,10 +47,11 @@ export const Login = () => {
       }
 
       try {
+        const fullPhoneNumber = `+91${phone}`;
         const response = await fetch(`${API_BASE_URL}/api/v1/auth/send-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phoneNumber: phone })
+          body: JSON.stringify({ phoneNumber: fullPhoneNumber })
         });
         if (response.ok) {
           const data = await response.json();
@@ -53,13 +70,13 @@ export const Login = () => {
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp.length > 0 && sessionId) {
+    if (otp.length === 4 && sessionId) {
       setLoading(true);
 
       if (config.USE_MOCK_API) {
         setTimeout(() => {
           if (otp === '1234') {
-            localStorage.setItem('ksp_token', 'mock_jwt_token_for_development');
+            login('mock_jwt_token_for_development');
             navigate('/');
           } else {
             alert('Invalid Mock OTP. Use 1234.');
@@ -77,7 +94,7 @@ export const Login = () => {
         });
         if (response.ok) {
           const data = await response.json();
-          localStorage.setItem('ksp_token', data.accessToken);
+          login(data.accessToken);
           navigate('/');
         } else {
           alert('Invalid OTP');
@@ -128,14 +145,33 @@ export const Login = () => {
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 'var(--space-2)', color: 'var(--color-text-muted)' }}>
                   Phone Number
                 </label>
-                <Input 
-                  type="tel" 
-                  placeholder="Enter your phone number" 
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  autoFocus
-                  disabled={loading}
-                />
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    background: 'var(--color-surface-muted)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '0 var(--space-3)',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    color: 'var(--color-text-muted)',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    🇮🇳 +91
+                  </div>
+                  <Input 
+                    type="tel" 
+                    placeholder="Enter phone number" 
+                    value={phone}
+                    onChange={handlePhoneChange}
+                    autoFocus
+                    disabled={loading}
+                    maxLength={10}
+                    style={{ flex: 1 }}
+                  />
+                </div>
               </div>
               <Button variant="primary" style={{ width: '100%', padding: 'var(--space-4)' }} disabled={loading}>
                 {loading ? 'Sending...' : 'Send OTP'}
@@ -145,17 +181,17 @@ export const Login = () => {
             <form onSubmit={handleVerifyOtp}>
               <h2 style={{ fontSize: '1.25rem', marginTop: 0, marginBottom: 'var(--space-2)' }}>Verify OTP</h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 'var(--space-6)' }}>
-                Code sent to {phone} <button type="button" onClick={() => setStep('phone')} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', padding: 0, fontWeight: 600 }}>Edit</button>
+                Code sent to +91 {phone} <button type="button" onClick={() => setStep('phone')} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', padding: 0, fontWeight: 600 }}>Edit</button>
               </p>
               
               <div style={{ marginBottom: 'var(--space-6)' }}>
                 <Input 
                   type="text" 
-                  placeholder="Enter 4-digit code (Hint: 1234)" 
+                  placeholder="Enter 4-digit code" 
                   value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  maxLength={6}
-                  style={{ textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.25em' }}
+                  onChange={handleOtpChange}
+                  maxLength={4}
+                  style={{ textAlign: 'center', fontSize: '1.25rem', letterSpacing: '0.4em' }}
                   autoFocus
                   disabled={loading}
                 />

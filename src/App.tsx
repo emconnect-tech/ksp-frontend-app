@@ -7,29 +7,37 @@ import { RawMaterials } from './pages/RawMaterials';
 import { StockIn } from './pages/StockIn';
 import { Bookings } from './pages/Bookings';
 import { AdminSettings } from './pages/AdminSettings';
+import { Customers } from './pages/Customers';
+import { AuthProvider } from './contexts/AuthContext';
+import { ProtectedRoute, PublicRoute } from './components/auth/RouteGuards';
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Unauthenticated Routes */}
-        <Route path="/login" element={<Login />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Routes (Redirect to dashboard if already logged in) */}
+          <Route element={<PublicRoute />}>
+            <Route path="/login" element={<Login />} />
+          </Route>
 
-        {/* Authenticated App Routes (Wrapped in Layout) */}
-        <Route path="/" element={<AppLayout />}>
-          {/* Dashboard Route */}
-          <Route index element={<Dashboard />} />
-          
-          {/* Other Routes */}
-          <Route path="materials" element={<RawMaterials />} />
-          <Route path="stock-in" element={<StockIn />} />
-          <Route path="bookings" element={<Bookings />} />
-          <Route path="clients" element={<PlaceholderPage title="Clients" />} />
-          <Route path="wallet" element={<PlaceholderPage title="Wallet" />} />
-          <Route path="profile" element={<AdminSettings />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+          {/* Protected Routes (Wrapped in Layout and Auth Guard) */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<AppLayout />}>
+              <Route index element={<Dashboard />} />
+              
+              {/* Other Routes */}
+              <Route path="materials" element={<RawMaterials />} />
+              <Route path="stock-in" element={<StockIn />} />
+              <Route path="bookings" element={<Bookings />} />
+              <Route path="customers" element={<Customers />} />
+              <Route path="wallet" element={<PlaceholderPage title="Wallet" />} />
+              <Route path="profile" element={<AdminSettings />} />
+            </Route>
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

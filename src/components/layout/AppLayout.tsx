@@ -10,7 +10,7 @@ export const AppLayout = () => {
     switch (location.pathname) {
       case '/': return 'Dashboard';
       case '/bookings': return 'Orders & Bookings';
-      case '/clients': return 'Customers';
+      case '/customers': return 'Customers';
       case '/wallet': return 'Wallet & Payments';
       case '/profile': return 'My Profile';
       default: return 'KSP Platform';

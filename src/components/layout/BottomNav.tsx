@@ -15,9 +15,9 @@ export const BottomNav = () => {
           <span>Bookings</span>
         </NavLink>
         
-        <NavLink to="/clients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink to="/customers" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <Users size={24} />
-          <span>Clients</span>
+          <span>Customers</span>
         </NavLink>
         
         <NavLink to="/wallet" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
