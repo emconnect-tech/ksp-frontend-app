@@ -76,7 +76,13 @@ export const Login = () => {
       if (config.USE_MOCK_API) {
         setTimeout(() => {
           if (otp === '1234') {
-            login('mock_jwt_token_for_development');
+            const mockUser = {
+              id: '1',
+              name: 'Ikram Khan',
+              role: 'Superadmin',
+              modules: ['Bookings', 'Materials', 'Stock-In', 'Reports', 'Admin']
+            };
+            login('mock_jwt_token_for_development', mockUser);
             navigate('/');
           } else {
             alert('Invalid Mock OTP. Use 1234.');
@@ -94,7 +100,14 @@ export const Login = () => {
         });
         if (response.ok) {
           const data = await response.json();
-          login(data.accessToken);
+          // Fallback user if backend doesn't provide it yet
+          const user = data.user || {
+            id: '1',
+            name: 'Ikram Khan',
+            role: 'Superadmin',
+            modules: ['Bookings', 'Materials', 'Stock-In', 'Reports', 'Admin']
+          };
+          login(data.accessToken, user);
           navigate('/');
         } else {
           alert('Invalid OTP');

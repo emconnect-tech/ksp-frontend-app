@@ -5,22 +5,28 @@
      DESIGN SYSTEM - TOKENS
      ========================================= */
 
-  /* Colors - Extracted from Figma */
-  --color-primary: #FF4C00;
+  /* Colors - Balanced Palette */
+  --color-primary: #FF4C00;      /* KSP Orange */
+  --color-primary-light: #FFF0EB;
   --color-primary-hover: #E64400;
   
-  --color-success: #00FF66;
-  --color-success-dark: #00CC52;
+  --color-secondary: #1A1A1A;    /* Deep Slate - For contrast */
+  --color-secondary-hover: #000000;
+  
+  --color-accent: #3A4AD9;       /* Indigo Accent - For professional depth */
+  
+  --color-success: #00B894;
+  --color-error: #FA5252;
 
   --color-surface: #FFFFFF;
-  --color-surface-muted: #F2F2F2;
+  --color-surface-muted: #F8F9FA;
   
-  --color-background: #FAFAFA;
+  --color-background: #FFFFFF;
   
-  --color-text-main: #000000;
+  --color-text-main: #1A1A1A;
   --color-text-muted: #666666;
   
-  --color-border: #E5E5E5;
+  --color-border: #EEEEEE;
 
   /* Typography */
   --font-heading: 'Space Grotesk', system-ui, sans-serif;
@@ -109,22 +115,23 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .btn-secondary {
-  background-color: var(--color-text-main);
+  background-color: var(--color-secondary);
   color: var(--color-surface);
 }
 
 .btn-secondary:hover {
-  background-color: #222;
+  background-color: var(--color-secondary-hover);
 }
 
 .btn-outline {
   background-color: transparent;
-  color: var(--color-text-main);
-  border: 2px solid var(--color-border);
+  color: var(--color-secondary);
+  border: 1px solid var(--color-border);
 }
 
 .btn-outline:hover {
-  border-color: var(--color-text-main);
+  border-color: var(--color-secondary);
+  background-color: var(--color-surface-muted);
 }
 
 /* Status Badges / Pills */
@@ -133,20 +140,22 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .badge-ongoing {
-  background-color: var(--color-primary);
-  color: white;
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+  border: 1px solid rgba(255, 76, 0, 0.2);
 }
 
 .badge-completed {
-  background-color: var(--color-text-main);
-  color: white;
+  background-color: #f1f3f5;
+  color: var(--color-secondary);
+  border: 1px solid var(--color-border);
 }
 
 .badge-upcoming {
@@ -228,13 +237,13 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @media (min-width: 640px) {
-  .container { max-width: 640px; padding-left: var(--space-6); padding-right: var(--space-6); }
+  .container { max-width: 100%; padding-left: var(--space-6); padding-right: var(--space-6); }
 }
 @media (min-width: 768px) {
-  .container { max-width: 768px; }
+  .container { max-width: 100%; }
 }
 @media (min-width: 1024px) {
-  .container { max-width: 1024px; padding-left: var(--space-8); padding-right: var(--space-8); }
+  .container { max-width: 1440px; padding-left: var(--space-12); padding-right: var(--space-12); }
 }
 
 .grid-layout {

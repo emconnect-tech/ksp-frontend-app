@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, RotateCcw, FileText, Calendar, User, Package } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
@@ -15,40 +15,7 @@ const PHASES = [
   { phase: 'Completed', action: null }
 ];
 
-const INITIAL_ORDERS = [
-  { 
-    id: '1042', customer: 'Planet Agro', items: 50, amount: '₹12,500', phase: 'Quotation Generated', action: 'Upload Bill', date: '2026-05-02',
-    itemsList: [
-      { name: 'Green Net 110GSM (30x60)', qty: 30, price: 250 },
-      { name: 'Safety Net 140GSM (10x50)', qty: 20, price: 250 }
-    ]
-  },
-  { 
-    id: '1043', customer: 'Tarpoline Pro', items: 20, amount: '₹8,200', phase: 'Bill Uploaded', action: 'Upload Dispatch Photo', date: '2026-05-02',
-    itemsList: [
-      { name: 'Tarpoline 250GSM (20x20)', qty: 10, price: 410 },
-      { name: 'Tarpoline 200GSM (15x15)', qty: 10, price: 410 }
-    ]
-  },
-  { 
-    id: '1044', customer: 'ABC Farm', items: 10, amount: '₹4,000', phase: 'Dispatched', action: 'Upload LR Photo', date: '2026-05-01',
-    itemsList: [
-      { name: 'Green Net 90GSM (50x100)', qty: 10, price: 400 }
-    ]
-  },
-  { 
-    id: '1046', customer: 'New Client Corp', items: 5, amount: '₹1,500', phase: 'Quotation Generated', action: 'Upload Bill', date: '2026-05-03',
-    itemsList: [
-      { name: 'Nylon Mesh (Roll)', qty: 5, price: 300 }
-    ]
-  },
-  { 
-    id: '1045', customer: 'Green Valley', items: 100, amount: '₹25,000', phase: 'Completed', action: null, date: '2026-04-30',
-    itemsList: [
-      { name: 'Premium Net 180GSM', qty: 100, price: 250 }
-    ]
-  },
-];
+const INITIAL_ORDERS: any[] = [];
 
 export const Bookings = () => {
   const [tab, setTab] = useState('ongoing');
@@ -62,6 +29,19 @@ export const Bookings = () => {
   const [view, setView] = useState<'list' | 'details'>('list');
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
+
+  // Handle Deep Linking from Dashboard
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get('id');
+    if (orderId) {
+      const order = orders.find(o => o.id === orderId);
+      if (order) {
+        setSelectedOrder(order);
+        setView('details');
+      }
+    }
+  }, [orders]);
 
   const handleViewDetails = (order: any) => {
     setSelectedOrder(order);
@@ -106,10 +86,35 @@ export const Bookings = () => {
       const nextPhase = PHASES[currentIdx + 1];
       
       if (nextPhase) {
-        return { ...order, phase: nextPhase.phase, action: nextPhase.action };
+        const updated = { ...order, phase: nextPhase.phase, action: nextPhase.action };
+        if (selectedOrder?.id === orderId) setSelectedOrder(updated);
+        return updated;
       }
       return order;
     }));
+  };
+
+  const handleConfirmBooking = () => {
+    const newId = (1040 + orders.length + 1).toString();
+    const customerName = selectedCustomer === 'planet_agro' ? 'Planet Agro' : 
+                        selectedCustomer === 'abc_farm' ? 'ABC Farm' : 'New Client';
+    
+    const newOrder = {
+      id: newId,
+      customer: customerName,
+      items: 120,
+      amount: '₹2,500',
+      phase: 'Quotation Generated',
+      action: 'Upload Bill',
+      date: new Date().toISOString().split('T')[0],
+      itemsList: [
+        { name: 'Green Net 110GSM (30x60)', qty: 120, price: 210 }
+      ]
+    };
+
+    setOrders(prev => [newOrder, ...prev]);
+    setTab('ongoing');
+    setWizardStep(1);
   };
 
   // Renders the list of orders based on the selected tab
@@ -386,7 +391,7 @@ export const Bookings = () => {
 
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
               <Button variant="outline" onClick={() => setWizardStep(2)} style={{ flex: 1 }}>Back</Button>
-              <Button variant="primary" onClick={() => { setWizardStep(1); setTab('ongoing'); }} style={{ flex: 2 }}>Confirm Booking</Button>
+              <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm Booking</Button>
             </div>
           </div>
         )}

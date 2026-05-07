@@ -1,13 +1,13 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { Dashboard } from './pages/Dashboard';
-import { PlaceholderPage } from './pages/PlaceholderPage';
 import { Login } from './pages/Login';
 import { RawMaterials } from './pages/RawMaterials';
 import { StockIn } from './pages/StockIn';
 import { Bookings } from './pages/Bookings';
 import { AdminSettings } from './pages/AdminSettings';
 import { Customers } from './pages/Customers';
+import { Reports } from './pages/Reports';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute, PublicRoute } from './components/auth/RouteGuards';
 
@@ -31,7 +31,7 @@ function App() {
               <Route path="stock-in" element={<StockIn />} />
               <Route path="bookings" element={<Bookings />} />
               <Route path="customers" element={<Customers />} />
-              <Route path="wallet" element={<PlaceholderPage title="Wallet" />} />
+              <Route path="reports" element={<Reports />} />
               <Route path="profile" element={<AdminSettings />} />
             </Route>
           </Route>
