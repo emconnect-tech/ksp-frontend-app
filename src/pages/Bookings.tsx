@@ -12,7 +12,7 @@ const PHASES = [
   { phase: 'Order Created', action: 'Generate Quotation' },
   { phase: 'Quotation Generated', action: 'Upload Bill' },
   { phase: 'Bill Uploaded', action: 'Dispatch (Full/Partial)' },
-  { phase: 'Partially Dispatched', action: 'Complete Dispatch' },
+  { phase: 'Partially Dispatched', action: 'Dispatch More (Full/Partial)' },
   { phase: 'Dispatched', action: 'Upload LR Photo' },
   { phase: 'Completed', action: null }
 ];
@@ -99,8 +99,8 @@ export const Bookings = () => {
         nextPhase = PHASES.find(p => p.phase === targetPhase);
       } else {
         nextPhase = PHASES[currentIdx + 1];
-        // If we are at Bill Uploaded and don't specify target, we might skip Partially Dispatched
-        if (order.phase === 'Bill Uploaded') {
+        // If we are at Bill Uploaded or Partially Dispatched and don't specify target, we default to Full Dispatch (Dispatched)
+        if (order.phase === 'Bill Uploaded' || order.phase === 'Partially Dispatched') {
             nextPhase = PHASES.find(p => p.phase === 'Dispatched');
         }
       }
@@ -676,7 +676,7 @@ export const Bookings = () => {
             boxShadow: '0 -4px 20px rgba(0,0,0,0.15)',
             animation: 'slideUp 0.3s ease-out'
           }} onClick={e => e.stopPropagation()}>
-            {orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' ? (
+            {(orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' || orders.find(o => o.id === activeOrderId)?.phase === 'Partially Dispatched') ? (
               <>
                 <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)', textAlign: 'center' }}>Dispatch Type</h3>
                 <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
@@ -700,7 +700,7 @@ export const Bookings = () => {
               <h3 style={{ marginTop: 0, marginBottom: 'var(--space-6)', textAlign: 'center' }}>Complete Action</h3>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', opacity: (orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' && !dispatchType) ? 0.5 : 1, pointerEvents: (orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' && !dispatchType) ? 'none' : 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', opacity: ((orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' || orders.find(o => o.id === activeOrderId)?.phase === 'Partially Dispatched') && !dispatchType) ? 0.5 : 1, pointerEvents: ((orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' || orders.find(o => o.id === activeOrderId)?.phase === 'Partially Dispatched') && !dispatchType) ? 'none' : 'auto' }}>
               <Button variant="primary" style={{ padding: 'var(--space-4)' }} onClick={() => cameraInputRef.current?.click()}>
                 📷 Take Photo (Camera)
               </Button>
