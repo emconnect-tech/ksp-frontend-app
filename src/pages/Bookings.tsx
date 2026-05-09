@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, RotateCcw, FileText, Calendar, User, Package } from 'lucide-react';
+import { ArrowLeft, RotateCcw, FileText, Calendar, User, Package, Share2 } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
@@ -93,6 +93,29 @@ export const Bookings = () => {
       }
       return order;
     }));
+  };
+
+  const handleShareQuotation = (order: any) => {
+    const itemsText = order.itemsList.map((item: any) => {
+      const totalWt = Array.isArray(item.weights) 
+        ? item.weights.reduce((a: number, b: number) => a + (parseFloat(b as any) || 0), 0)
+        : (item.weight || 0);
+      return `• ${item.name}: ${item.qty} Bundles (${totalWt} kg)`;
+    }).join('\n');
+
+    const message = `*KSP Quotation - #${order.id}*\n` +
+      `Customer: ${order.customer}\n` +
+      `Date: ${order.date}\n\n` +
+      `*Items:*\n${itemsText}\n\n` +
+      `*Total Amount: ${order.amount}*\n\n` +
+      `_Generated via KSP Portal_`;
+
+    const encoded = encodeURIComponent(message);
+    window.open(`https://wa.me/?text=${encoded}`, '_blank');
+    
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(message);
+    }
   };
 
   const [orderItems, setOrderItems] = useState([
@@ -194,11 +217,23 @@ export const Bookings = () => {
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
-            <ArrowLeft size={24} />
-          </button>
-          <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Order Details</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+              <ArrowLeft size={24} />
+            </button>
+            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Order Details</h2>
+          </div>
+          
+          {selectedOrder.phase === 'Quotation Generated' && (
+            <Button 
+              variant="outline" 
+              onClick={() => handleShareQuotation(selectedOrder)}
+              style={{ padding: '6px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              <Share2 size={16} /> Share Quote
+            </Button>
+          )}
         </div>
 
         <Card style={{ padding: 'var(--space-5)' }}>
