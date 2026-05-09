@@ -9,6 +9,7 @@ import { CustomerForm } from '../components/customers/CustomerForm';
 
 // Lifecycle Phases
 const PHASES = [
+  { phase: 'Order Created', action: 'Generate Quotation' },
   { phase: 'Quotation Generated', action: 'Upload Bill' },
   { phase: 'Bill Uploaded', action: 'Upload Dispatch Photo' },
   { phase: 'Dispatched', action: 'Upload LR Photo' },
@@ -112,8 +113,8 @@ export const Bookings = () => {
       items: totalQty,
       totalWeight: `${totalWt} kg`,
       amount: `₹${(totalQty * 210).toLocaleString()}`,
-      phase: 'Quotation Generated',
-      action: 'Upload Bill',
+      phase: 'Order Created',
+      action: 'Generate Quotation',
       date: new Date().toISOString().split('T')[0],
       itemsList: orderItems.map(item => ({
         name: item.product,
