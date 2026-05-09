@@ -159,6 +159,30 @@ export const Bookings = () => {
     setOrderItems([{ id: Date.now(), product: 'Green Net 110GSM', qty: 1, weights: [25] }]);
   };
 
+  const handleShareEnquiry = () => {
+    const itemsText = orderItems.map((item: any) => {
+      const totalWt = item.weights.reduce((a: number, b: number) => a + (parseFloat(b as any) || 0), 0);
+      return `• ${item.product}: ${item.qty} Bundles (${totalWt} kg)`;
+    }).join('\n');
+
+    const totalAmt = orderItems.reduce((sum, item) => sum + (item.qty * 2500), 0);
+    const customerName = selectedCustomer === 'planet_agro' ? 'Planet Agro' : 
+                        selectedCustomer === 'abc_farm' ? 'ABC Farm' : 'New Client';
+
+    const message = `*KSP Enquiry - Quotation Template*\n` +
+      `Customer: ${customerName}\n\n` +
+      `*Proposed Items:*\n${itemsText}\n\n` +
+      `*Estimated Total: ₹${totalAmt.toLocaleString()}*\n\n` +
+      `_This is a pre-booking enquiry quote._`;
+
+    const encoded = encodeURIComponent(message);
+    window.open(`https://wa.me/?text=${encoded}`, '_blank');
+    
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(message);
+    }
+  };
+
   // Renders the list of orders based on the selected tab
   const renderList = () => {
     const filteredOrders = orders.filter(o => 
@@ -555,9 +579,18 @@ export const Bookings = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <Button variant="outline" onClick={() => setWizardStep(2)} style={{ flex: 1 }}>Back</Button>
-              <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm & Create Booking</Button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <Button 
+                variant="outline" 
+                onClick={handleShareEnquiry}
+                style={{ width: '100%', borderColor: 'var(--color-primary)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                <Share2 size={18} /> Share as Enquiry (Template)
+              </Button>
+              <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                <Button variant="outline" onClick={() => setWizardStep(2)} style={{ flex: 1 }}>Back</Button>
+                <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm & Create Booking</Button>
+              </div>
             </div>
           </div>
         )}
