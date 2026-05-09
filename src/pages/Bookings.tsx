@@ -66,6 +66,11 @@ export const Bookings = () => {
   };
 
   const handleButtonClick = (orderId: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (order?.phase === 'Order Created') {
+      handleAction(orderId);
+      return;
+    }
     setActiveOrderId(orderId);
     setShowActionSheet(true);
   };
