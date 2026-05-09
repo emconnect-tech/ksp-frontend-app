@@ -431,17 +431,41 @@ export const Bookings = () => {
                 </div>
 
                 {item.qty > 0 && (
-                  <div style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '8px', color: 'var(--color-text-muted)' }}>
+                  <div style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 'var(--space-4)', color: 'var(--color-text-muted)' }}>
                       Enter Weight for each Bundle (kg)
                     </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 'var(--space-4)' }}>
                       {item.weights.map((w, idx) => (
                         <div key={idx} style={{ position: 'relative' }}>
-                          <span style={{ position: 'absolute', top: '-6px', left: '4px', fontSize: '8px', background: 'white', padding: '0 2px', borderRadius: '2px', color: 'var(--color-primary)' }}>#{idx + 1}</span>
+                          <span style={{ 
+                            position: 'absolute', 
+                            top: '-10px', 
+                            left: '8px', 
+                            fontSize: '10px', 
+                            background: 'white', 
+                            padding: '2px 6px', 
+                            borderRadius: '4px', 
+                            color: 'var(--color-primary)',
+                            fontWeight: 700,
+                            boxShadow: 'var(--shadow-sm)',
+                            zIndex: 1,
+                            border: '1px solid var(--color-border)'
+                          }}>
+                            Bundle #{idx + 1}
+                          </span>
                           <Input 
                             type="number" 
-                            style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }} 
+                            style={{ 
+                              padding: 'var(--space-3)', 
+                              fontSize: '1rem', 
+                              textAlign: 'center', 
+                              height: '52px', 
+                              background: 'white',
+                              fontWeight: 600,
+                              borderRadius: 'var(--radius-md)',
+                              boxShadow: 'var(--shadow-sm)'
+                            }} 
                             value={w}
                             onChange={(e) => updateWeight(item.id, idx, e.target.value)}
                           />
