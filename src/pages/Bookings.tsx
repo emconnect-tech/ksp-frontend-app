@@ -94,28 +94,40 @@ export const Bookings = () => {
     }));
   };
 
+  const [orderItems, setOrderItems] = useState([
+    { id: Date.now(), product: 'Green Net 110GSM', qty: 1, weights: [25] }
+  ]);
+
   const handleConfirmBooking = () => {
     const newId = (1040 + orders.length + 1).toString();
     const customerName = selectedCustomer === 'planet_agro' ? 'Planet Agro' : 
                         selectedCustomer === 'abc_farm' ? 'ABC Farm' : 'New Client';
     
+    const totalQty = orderItems.reduce((sum, item) => sum + item.qty, 0);
+    const totalWt = orderItems.reduce((sum, item) => sum + item.weights.reduce((s, w) => s + (parseFloat(w as any) || 0), 0), 0);
+    
     const newOrder = {
       id: newId,
       customer: customerName,
-      items: 120,
-      totalWeight: '3000 kg',
-      amount: '₹2,500',
+      items: totalQty,
+      totalWeight: `${totalWt} kg`,
+      amount: `₹${(totalQty * 210).toLocaleString()}`,
       phase: 'Quotation Generated',
       action: 'Upload Bill',
       date: new Date().toISOString().split('T')[0],
-      itemsList: [
-        { name: 'Green Net 110GSM (30x60)', qty: 120, weight: 25, price: 210 }
-      ]
+      itemsList: orderItems.map(item => ({
+        name: item.product,
+        qty: item.qty,
+        weights: item.weights,
+        price: 210
+      }))
     };
 
     setOrders(prev => [newOrder, ...prev]);
     setTab('ongoing');
     setWizardStep(1);
+    setSelectedCustomer('');
+    setOrderItems([{ id: Date.now(), product: 'Green Net 110GSM', qty: 1, weights: [25] }]);
   };
 
   // Renders the list of orders based on the selected tab
@@ -321,6 +333,37 @@ export const Bookings = () => {
     );
   };
 
+  const updateItem = (id: number, field: string, value: any) => {
+    setOrderItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      if (field === 'qty') {
+        const newQty = parseInt(value) || 0;
+        // Keep existing weights if possible, or pad with default
+        const newWeights = [...item.weights];
+        if (newQty > item.weights.length) {
+          for (let i = item.weights.length; i < newQty; i++) newWeights.push(25);
+        } else {
+          newWeights.length = newQty;
+        }
+        return { ...item, qty: newQty, weights: newWeights };
+      }
+      return { ...item, [field]: value };
+    }));
+  };
+
+  const updateWeight = (itemId: number, weightIdx: number, val: string) => {
+    setOrderItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const newWeights = [...item.weights];
+      newWeights[weightIdx] = parseFloat(val) || 0;
+      return { ...item, weights: newWeights };
+    }));
+  };
+
+  const addItem = () => {
+    setOrderItems(prev => [...prev, { id: Date.now(), product: 'Green Net 110GSM', qty: 1, weights: [25] }]);
+  };
+
   // Renders the Create Order Wizard
   const renderWizard = () => {
     return (
@@ -362,22 +405,61 @@ export const Bookings = () => {
 
         {wizardStep === 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            <div style={{ padding: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Product</div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Qty</div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Wt (kg)</div>
-                
-                <select className="input-field" style={{ fontSize: '0.85rem' }}><option>Green Net 110GSM</option></select>
-                <Input type="number" placeholder="Qty" defaultValue={1} />
-                <Input type="number" placeholder="kg" defaultValue={25} />
-              </div>
-              <Button variant="outline" style={{ width: '100%', fontSize: '0.85rem' }}>+ Add Another Item</Button>
-            </div>
+            {orderItems.map((item) => (
+              <div key={item.id} style={{ padding: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'white' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px' }}>Product</label>
+                    <select 
+                      className="input-field" 
+                      value={item.product}
+                      onChange={(e) => updateItem(item.id, 'product', e.target.value)}
+                    >
+                      <option>Green Net 110GSM</option>
+                      <option>Tarpaulin 90GSM</option>
+                      <option>Mulch Film 25M</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px' }}>Quantity</label>
+                    <Input 
+                      type="number" 
+                      value={item.qty} 
+                      onChange={(e) => updateItem(item.id, 'qty', e.target.value)}
+                    />
+                  </div>
+                </div>
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                {item.qty > 0 && (
+                  <div style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '8px', color: 'var(--color-text-muted)' }}>
+                      Enter Weight for each Bundle (kg)
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: '8px' }}>
+                      {item.weights.map((w, idx) => (
+                        <div key={idx} style={{ position: 'relative' }}>
+                          <span style={{ position: 'absolute', top: '-6px', left: '4px', fontSize: '8px', background: 'white', padding: '0 2px', borderRadius: '2px', color: 'var(--color-primary)' }}>#{idx + 1}</span>
+                          <Input 
+                            type="number" 
+                            style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }} 
+                            value={w}
+                            onChange={(e) => updateWeight(item.id, idx, e.target.value)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <Button variant="outline" onClick={addItem} style={{ borderStyle: 'dashed', fontSize: '0.85rem' }}>
+              + Add Another Product
+            </Button>
+
+            <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
               <Button variant="outline" onClick={() => setWizardStep(1)} style={{ flex: 1 }}>Back</Button>
-              <Button variant="primary" onClick={() => setWizardStep(3)} style={{ flex: 2 }}>Next: Generate Quote</Button>
+              <Button variant="primary" onClick={() => setWizardStep(3)} style={{ flex: 2 }}>Next: Review Quote</Button>
             </div>
           </div>
         )}
@@ -385,24 +467,32 @@ export const Bookings = () => {
         {wizardStep === 3 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ margin: '0 0 var(--space-3) 0', fontSize: '0.95rem' }}>Quotation Summary</h4>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem' }}>
-                <span>
-                  <strong>Green Net 110GSM</strong>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>1 Bundle • 25 kg</div>
-                </span>
-                <span style={{ fontWeight: 600 }}>₹2,500</span>
+              <h4 style={{ margin: '0 0 var(--space-4) 0', fontSize: '0.95rem' }}>Quotation Summary</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                {orderItems.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span>
+                      <strong>{item.product}</strong>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                        {item.qty} Bundles • Total {item.weights.reduce((a, b) => a + (parseFloat(b as any) || 0), 0)} kg
+                      </div>
+                    </span>
+                    <span style={{ fontWeight: 600 }}>₹{(item.qty * 2500).toLocaleString()}</span>
+                  </div>
+                ))}
               </div>
-              <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 'var(--space-3) 0' }} />
+              <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 'var(--space-4) 0' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                <span>Total</span>
-                <span>₹2,500</span>
+                <span>Total Amount</span>
+                <span style={{ color: 'var(--color-primary)' }}>
+                  ₹{orderItems.reduce((sum, item) => sum + (item.qty * 2500), 0).toLocaleString()}
+                </span>
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
               <Button variant="outline" onClick={() => setWizardStep(2)} style={{ flex: 1 }}>Back</Button>
-              <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm Booking</Button>
+              <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm & Create Booking</Button>
             </div>
           </div>
         )}
