@@ -103,12 +103,13 @@ export const Bookings = () => {
       id: newId,
       customer: customerName,
       items: 120,
+      totalWeight: '3000 kg',
       amount: '₹2,500',
       phase: 'Quotation Generated',
       action: 'Upload Bill',
       date: new Date().toISOString().split('T')[0],
       itemsList: [
-        { name: 'Green Net 110GSM (30x60)', qty: 120, price: 210 }
+        { name: 'Green Net 110GSM (30x60)', qty: 120, weight: 25, price: 210 }
       ]
     };
 
@@ -234,7 +235,9 @@ export const Bookings = () => {
               <div key={idx} style={{ padding: 'var(--space-4)', borderBottom: idx < selectedOrder.itemsList.length - 1 ? '1px solid var(--color-border)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontWeight: 500, fontSize: '0.9rem' }}>{item.name}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{item.qty} Bundles × ₹{item.price}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                    {item.qty} Bundles {item.weight && `(${item.weight} kg/ea)`} × ₹{item.price}
+                  </div>
                 </div>
                 <div style={{ fontWeight: 600 }}>₹{item.qty * item.price}</div>
               </div>
@@ -359,12 +362,17 @@ export const Bookings = () => {
 
         {wizardStep === 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            <div style={{ padding: 'var(--space-4)', border: '1px dashed var(--color-border)', borderRadius: 'var(--radius-md)' }}>
-              <div className="grid-layout" style={{ marginBottom: 'var(--space-3)' }}>
-                <select className="input-field"><option>Green Net 110GSM (30x60)</option></select>
+            <div style={{ padding: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Product</div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Qty</div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Wt (kg)</div>
+                
+                <select className="input-field" style={{ fontSize: '0.85rem' }}><option>Green Net 110GSM</option></select>
                 <Input type="number" placeholder="Qty" defaultValue={1} />
+                <Input type="number" placeholder="kg" defaultValue={25} />
               </div>
-              <Button variant="outline" style={{ width: '100%' }}>+ Add Another Item</Button>
+              <Button variant="outline" style={{ width: '100%', fontSize: '0.85rem' }}>+ Add Another Item</Button>
             </div>
 
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
@@ -377,10 +385,13 @@ export const Bookings = () => {
         {wizardStep === 3 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ margin: '0 0 var(--space-2) 0' }}>Quotation Summary</h4>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span>Green Net (x1)</span>
-                <span>₹2,500</span>
+              <h4 style={{ margin: '0 0 var(--space-3) 0', fontSize: '0.95rem' }}>Quotation Summary</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem' }}>
+                <span>
+                  <strong>Green Net 110GSM</strong>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>1 Bundle • 25 kg</div>
+                </span>
+                <span style={{ fontWeight: 600 }}>₹2,500</span>
               </div>
               <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 'var(--space-3) 0' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.1rem' }}>
