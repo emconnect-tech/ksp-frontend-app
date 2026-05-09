@@ -11,7 +11,8 @@ import { CustomerForm } from '../components/customers/CustomerForm';
 const PHASES = [
   { phase: 'Order Created', action: 'Generate Quotation' },
   { phase: 'Quotation Generated', action: 'Upload Bill' },
-  { phase: 'Bill Uploaded', action: 'Upload Dispatch Photo' },
+  { phase: 'Bill Uploaded', action: 'Dispatch (Full/Partial)' },
+  { phase: 'Partially Dispatched', action: 'Complete Dispatch' },
   { phase: 'Dispatched', action: 'Upload LR Photo' },
   { phase: 'Completed', action: null }
 ];
@@ -75,21 +76,34 @@ export const Bookings = () => {
     setShowActionSheet(true);
   };
 
+  const [dispatchType, setDispatchType] = useState<'Full' | 'Partial' | null>(null);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0 && activeOrderId) {
-      handleAction(activeOrderId);
+      handleAction(activeOrderId, dispatchType === 'Partial' ? 'Partially Dispatched' : undefined);
       setActiveOrderId(null);
+      setDispatchType(null);
       setShowActionSheet(false);
       e.target.value = '';
     }
   };
 
-  const handleAction = (orderId: string) => {
+  const handleAction = (orderId: string, targetPhase?: string) => {
     setOrders(prev => prev.map(order => {
       if (order.id !== orderId) return order;
       
       const currentIdx = PHASES.findIndex(p => p.phase === order.phase);
-      const nextPhase = PHASES[currentIdx + 1];
+      let nextPhase;
+      
+      if (targetPhase) {
+        nextPhase = PHASES.find(p => p.phase === targetPhase);
+      } else {
+        nextPhase = PHASES[currentIdx + 1];
+        // If we are at Bill Uploaded and don't specify target, we might skip Partially Dispatched
+        if (order.phase === 'Bill Uploaded') {
+            nextPhase = PHASES.find(p => p.phase === 'Dispatched');
+        }
+      }
       
       if (nextPhase) {
         const updated = { ...order, phase: nextPhase.phase, action: nextPhase.action };
@@ -654,7 +668,7 @@ export const Bookings = () => {
           position: 'fixed', bottom: 0, left: 0, right: 0, top: 0,
           background: 'rgba(0,0,0,0.5)', zIndex: 1000,
           display: 'flex', alignItems: 'flex-end'
-        }} onClick={() => setShowActionSheet(false)}>
+        }} onClick={() => { setShowActionSheet(false); setDispatchType(null); }}>
           <div style={{
             width: '100%', background: 'white', 
             borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
@@ -662,15 +676,38 @@ export const Bookings = () => {
             boxShadow: '0 -4px 20px rgba(0,0,0,0.15)',
             animation: 'slideUp 0.3s ease-out'
           }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0, marginBottom: 'var(--space-6)', textAlign: 'center' }}>Complete Action</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            {orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' ? (
+              <>
+                <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)', textAlign: 'center' }}>Dispatch Type</h3>
+                <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+                  <Button 
+                    variant={dispatchType === 'Full' ? 'primary' : 'outline'} 
+                    style={{ flex: 1, height: '60px' }}
+                    onClick={() => setDispatchType('Full')}
+                  >
+                    🚛 Full Dispatch
+                  </Button>
+                  <Button 
+                    variant={dispatchType === 'Partial' ? 'primary' : 'outline'} 
+                    style={{ flex: 1, height: '60px' }}
+                    onClick={() => setDispatchType('Partial')}
+                  >
+                    📦 Partial Dispatch
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <h3 style={{ marginTop: 0, marginBottom: 'var(--space-6)', textAlign: 'center' }}>Complete Action</h3>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', opacity: (orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' && !dispatchType) ? 0.5 : 1, pointerEvents: (orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' && !dispatchType) ? 'none' : 'auto' }}>
               <Button variant="primary" style={{ padding: 'var(--space-4)' }} onClick={() => cameraInputRef.current?.click()}>
                 📷 Take Photo (Camera)
               </Button>
               <Button variant="outline" style={{ padding: 'var(--space-4)' }} onClick={() => fileInputRef.current?.click()}>
                 🖼️ Choose from Gallery / Files
               </Button>
-              <Button variant="outline" style={{ marginTop: 'var(--space-2)', border: 'none' }} onClick={() => setShowActionSheet(false)}>
+              <Button variant="outline" style={{ marginTop: 'var(--space-2)', border: 'none' }} onClick={() => { setShowActionSheet(false); setDispatchType(null); }}>
                 Cancel
               </Button>
             </div>
