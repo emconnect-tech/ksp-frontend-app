@@ -448,7 +448,7 @@ export const Bookings = () => {
     return (
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-6)', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Create Booking</h2>
+          <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Create Order</h2>
           <Badge status="upcoming">Step {wizardStep} of 3</Badge>
         </div>
 
@@ -603,7 +603,7 @@ export const Bookings = () => {
               </Button>
               <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
                 <Button variant="outline" onClick={() => setWizardStep(2)} style={{ flex: 1 }}>Back</Button>
-                <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm & Create Booking</Button>
+                <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm & Create Order</Button>
               </div>
             </div>
           </div>

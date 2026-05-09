@@ -9,7 +9,7 @@ export const BottomNav = () => {
     { to: '/', icon: <Home size={22} />, label: 'Home', module: 'Home' },
     { to: '/bookings', icon: <CalendarDays size={22} />, label: 'Orders', module: 'Bookings' },
     { to: '/reports', icon: <BarChart3 size={22} />, label: 'Reports', module: 'Reports' },
-    { to: '/customers', icon: <Users size={22} />, label: 'Clients', module: 'Bookings' }, // Customers usually tied to Bookings/Sales
+    { to: '/customers', icon: <Users size={22} />, label: 'Customers', module: 'Bookings' }, // Customers usually tied to Bookings/Sales
     { to: '/profile', icon: <User size={22} />, label: 'Admin', module: 'Admin' },
   ];
 

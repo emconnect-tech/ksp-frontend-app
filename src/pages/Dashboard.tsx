@@ -16,7 +16,7 @@ export const Dashboard = () => {
   const { user } = useAuth();
 
   const allModules = [
-    { label: 'Bookings', icon: <ShoppingBag size={20} color="var(--color-primary)" />, path: '/bookings', module: 'Bookings' },
+    { label: 'Orders', icon: <ShoppingBag size={20} color="var(--color-primary)" />, path: '/bookings', module: 'Bookings' },
     { label: 'Materials', icon: <Factory size={20} color="var(--color-primary)" />, path: '/materials', module: 'Materials' },
     { label: 'Stock-In', icon: <Package size={20} color="var(--color-primary)" />, path: '/stock-in', module: 'Stock-In' },
     { label: 'Customers', icon: <Users size={20} color="var(--color-primary)" />, path: '/customers', module: 'Bookings' },
@@ -54,7 +54,7 @@ export const Dashboard = () => {
           <Card style={{ flex: '0 0 220px', background: 'linear-gradient(135deg, var(--color-primary) 0%, #E64400 100%)', color: 'white', border: 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <ShoppingBag size={14} opacity={0.9} />
-              <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, opacity: 0.9 }}>Today's Bookings</p>
+              <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, opacity: 0.9 }}>Today's Orders</p>
             </div>
             <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>12 Orders</h2>
           </Card>
