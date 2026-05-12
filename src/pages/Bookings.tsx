@@ -9,7 +9,8 @@ import { CustomerForm } from '../components/customers/CustomerForm';
 
 // Lifecycle Phases
 const PHASES = [
-  { phase: 'Order Created', action: 'Generate Quotation' },
+  { phase: 'Order Created', action: 'Add Weights' },
+  { phase: 'Weights Added', action: 'Generate Quotation' },
   { phase: 'Quotation Generated', action: 'Upload Bill' },
   { phase: 'Bill Uploaded', action: 'Dispatch (Full/Partial)' },
   { phase: 'Partially Dispatched', action: 'Dispatch More (Full/Partial)' },
@@ -66,14 +67,50 @@ export const Bookings = () => {
     }));
   };
 
+  const [showAddWeightsModal, setShowAddWeightsModal] = useState(false);
+  const [weightsFormData, setWeightsFormData] = useState<any[]>([]);
+
   const handleButtonClick = (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
     if (order?.phase === 'Order Created') {
+      setActiveOrderId(orderId);
+      setWeightsFormData(order.itemsList.map((item: any) => ({
+        ...item,
+        weights: Array.isArray(item.weights) && item.weights.length === item.qty 
+          ? [...item.weights] 
+          : Array(item.qty).fill('')
+      })));
+      setShowAddWeightsModal(true);
+      return;
+    }
+    if (order?.phase === 'Weights Added') {
       handleAction(orderId);
       return;
     }
     setActiveOrderId(orderId);
     setShowActionSheet(true);
+  };
+
+  const handleSaveWeights = () => {
+    if (!activeOrderId) return;
+    
+    setOrders(prev => prev.map(order => {
+      if (order.id !== activeOrderId) return order;
+      
+      const updatedItemsList = weightsFormData;
+      const totalWt = updatedItemsList.reduce((sum, item) => sum + item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0), 0);
+      
+      return {
+        ...order,
+        totalWeight: `${totalWt} kg`,
+        itemsList: updatedItemsList,
+        phase: 'Weights Added',
+        action: 'Generate Quotation'
+      };
+    }));
+    
+    setShowAddWeightsModal(false);
+    setActiveOrderId(null);
   };
 
   const [dispatchType, setDispatchType] = useState<'Full' | 'Partial' | null>(null);
@@ -119,7 +156,8 @@ export const Bookings = () => {
       const totalWt = Array.isArray(item.weights) 
         ? item.weights.reduce((a: number, b: number) => a + (parseFloat(b as any) || 0), 0)
         : (item.weight || 0);
-      return `• ${item.name}: ${item.qty} Bundles (${totalWt} kg)`;
+      const weightStr = totalWt > 0 ? ` (${totalWt} kg)` : '';
+      return `• ${item.name}: ${item.qty} Bundles${weightStr}`;
     }).join('\n');
 
     const message = `*KSP Quotation - #${order.id}*\n` +
@@ -138,7 +176,7 @@ export const Bookings = () => {
   };
 
   const [orderItems, setOrderItems] = useState([
-    { id: Date.now(), product: 'Green Net 110GSM', qty: 1, weights: [25] }
+    { id: Date.now(), product: 'Green Net 110GSM', qty: 1 }
   ]);
 
   const handleConfirmBooking = () => {
@@ -147,21 +185,20 @@ export const Bookings = () => {
                         selectedCustomer === 'abc_farm' ? 'ABC Farm' : 'New Client';
     
     const totalQty = orderItems.reduce((sum, item) => sum + item.qty, 0);
-    const totalWt = orderItems.reduce((sum, item) => sum + item.weights.reduce((s, w) => s + (parseFloat(w as any) || 0), 0), 0);
     
     const newOrder = {
       id: newId,
       customer: customerName,
       items: totalQty,
-      totalWeight: `${totalWt} kg`,
+      totalWeight: `Pending`,
       amount: `₹${(totalQty * 210).toLocaleString()}`,
       phase: 'Order Created',
-      action: 'Generate Quotation',
+      action: 'Add Weights',
       date: new Date().toISOString().split('T')[0],
       itemsList: orderItems.map(item => ({
         name: item.product,
         qty: item.qty,
-        weights: item.weights,
+        weights: Array(item.qty).fill(''),
         price: 210
       }))
     };
@@ -170,13 +207,12 @@ export const Bookings = () => {
     setTab('ongoing');
     setWizardStep(1);
     setSelectedCustomer('');
-    setOrderItems([{ id: Date.now(), product: 'Green Net 110GSM', qty: 1, weights: [25] }]);
+    setOrderItems([{ id: Date.now(), product: 'Green Net 110GSM', qty: 1 }]);
   };
 
   const handleShareEnquiry = () => {
     const itemsText = orderItems.map((item: any) => {
-      const totalWt = item.weights.reduce((a: number, b: number) => a + (parseFloat(b as any) || 0), 0);
-      return `• ${item.product}: ${item.qty} Bundles (${totalWt} kg)`;
+      return `• ${item.product}: ${item.qty} Bundles`;
     }).join('\n');
 
     const totalAmt = orderItems.reduce((sum, item) => sum + (item.qty * 2500), 0);
@@ -417,30 +453,14 @@ export const Bookings = () => {
       if (item.id !== id) return item;
       if (field === 'qty') {
         const newQty = parseInt(value) || 0;
-        // Keep existing weights if possible, or pad with default
-        const newWeights = [...item.weights];
-        if (newQty > item.weights.length) {
-          for (let i = item.weights.length; i < newQty; i++) newWeights.push(25);
-        } else {
-          newWeights.length = newQty;
-        }
-        return { ...item, qty: newQty, weights: newWeights };
+        return { ...item, qty: newQty };
       }
       return { ...item, [field]: value };
     }));
   };
 
-  const updateWeight = (itemId: number, weightIdx: number, val: string) => {
-    setOrderItems(prev => prev.map(item => {
-      if (item.id !== itemId) return item;
-      const newWeights = [...item.weights];
-      newWeights[weightIdx] = parseFloat(val) || 0;
-      return { ...item, weights: newWeights };
-    }));
-  };
-
   const addItem = () => {
-    setOrderItems(prev => [...prev, { id: Date.now(), product: 'Green Net 110GSM', qty: 1, weights: [25] }]);
+    setOrderItems(prev => [...prev, { id: Date.now(), product: 'Green Net 110GSM', qty: 1 }]);
   };
 
   // Renders the Create Order Wizard
@@ -508,51 +528,6 @@ export const Bookings = () => {
                     />
                   </div>
                 </div>
-
-                {item.qty > 0 && (
-                  <div style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 'var(--space-4)', color: 'var(--color-text-muted)' }}>
-                      Enter Weight for each Bundle (kg)
-                    </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 'var(--space-4)' }}>
-                      {item.weights.map((w, idx) => (
-                        <div key={idx} style={{ position: 'relative' }}>
-                          <span style={{ 
-                            position: 'absolute', 
-                            top: '-10px', 
-                            left: '8px', 
-                            fontSize: '10px', 
-                            background: 'white', 
-                            padding: '2px 6px', 
-                            borderRadius: '4px', 
-                            color: 'var(--color-primary)',
-                            fontWeight: 700,
-                            boxShadow: 'var(--shadow-sm)',
-                            zIndex: 1,
-                            border: '1px solid var(--color-border)'
-                          }}>
-                            Bundle #{idx + 1}
-                          </span>
-                          <Input 
-                            type="number" 
-                            style={{ 
-                              padding: 'var(--space-3)', 
-                              fontSize: '1rem', 
-                              textAlign: 'center', 
-                              height: '52px', 
-                              background: 'white',
-                              fontWeight: 600,
-                              borderRadius: 'var(--radius-md)',
-                              boxShadow: 'var(--shadow-sm)'
-                            }} 
-                            value={w}
-                            onChange={(e) => updateWeight(item.id, idx, e.target.value)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
 
@@ -577,7 +552,7 @@ export const Bookings = () => {
                     <span>
                       <strong>{item.product}</strong>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        {item.qty} Bundles • Total {item.weights.reduce((a, b) => a + (parseFloat(b as any) || 0), 0)} kg
+                        {item.qty} Bundles
                       </div>
                     </span>
                     <span style={{ fontWeight: 600 }}>₹{(item.qty * 2500).toLocaleString()}</span>
@@ -658,6 +633,50 @@ export const Bookings = () => {
             <Button variant="primary" style={{ width: '100%', marginTop: 'var(--space-6)' }} onClick={() => setShowCustomerModal(false)}>
               Close
             </Button>
+          </Card>
+        </div>
+      )}
+
+      {/* Add Weights Modal */}
+      {showAddWeightsModal && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, top: 0,
+          background: 'rgba(0,0,0,0.5)', zIndex: 1100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 'var(--space-4)'
+        }} onClick={() => setShowAddWeightsModal(false)}>
+          <Card style={{ width: '100%', maxWidth: '400px', padding: 'var(--space-6)', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>Add Bundle Weights</h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+              {weightsFormData.map((item, itemIdx) => (
+                <div key={itemIdx}>
+                  <h4 style={{ margin: '0 0 var(--space-3) 0', fontSize: '0.9rem' }}>{item.name} ({item.qty} Bundles)</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 'var(--space-3)' }}>
+                    {item.weights.map((w: any, wIdx: number) => (
+                      <div key={wIdx} style={{ position: 'relative' }}>
+                        <span style={{ position: 'absolute', top: '-8px', left: '6px', fontSize: '10px', background: 'white', padding: '0 4px', color: 'var(--color-primary)', fontWeight: 600 }}>#{wIdx + 1}</span>
+                        <Input 
+                          type="number"
+                          style={{ textAlign: 'center', height: '44px' }}
+                          value={w}
+                          onChange={(e) => {
+                            const newForm = [...weightsFormData];
+                            newForm[itemIdx].weights[wIdx] = e.target.value;
+                            setWeightsFormData(newForm);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-6)' }}>
+              <Button variant="outline" style={{ flex: 1 }} onClick={() => setShowAddWeightsModal(false)}>Cancel</Button>
+              <Button variant="primary" style={{ flex: 2 }} onClick={handleSaveWeights}>Save Weights</Button>
+            </div>
           </Card>
         </div>
       )}
