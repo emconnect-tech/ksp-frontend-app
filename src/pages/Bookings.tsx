@@ -6,6 +6,7 @@ import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
 import { CustomerForm } from '../components/customers/CustomerForm';
+import { fetchOrders, createOrderAPI, updateOrderWeightsAPI, updateOrderStatusAPI } from '../api';
 
 // Lifecycle Phases
 const PHASES = [
@@ -18,13 +19,14 @@ const PHASES = [
   { phase: 'Completed', action: null }
 ];
 
-const INITIAL_ORDERS: any[] = [];
+// Initial mock state removed
+
 
 export const Bookings = () => {
   const [tab, setTab] = useState('ongoing');
   const [wizardStep, setWizardStep] = useState(1);
   const [selectedCustomer, setSelectedCustomer] = useState('');
-  const [orders, setOrders] = useState(INITIAL_ORDERS);
+  const [orders, setOrders] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -32,6 +34,37 @@ export const Bookings = () => {
   const [view, setView] = useState<'list' | 'details'>('list');
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  const loadOrders = async () => {
+    try {
+      const data = await fetchOrders();
+      // Map backend response to frontend state if needed
+      // Mock formatting for now
+      const formatted = data.map((o: any) => ({
+        id: o.id || o.orderNumber,
+        customer: o.customerId ? 'Customer ' + o.customerId : 'Unknown',
+        items: o.items?.length || 0,
+        totalWeight: o.totalWeightKg ? `${o.totalWeightKg} kg` : 'Pending',
+        amount: `₹${(o.totalAmount || 0).toLocaleString()}`,
+        phase: o.statusId ? 'Order Created' : 'Order Created', // Map real status here
+        action: 'Add Weights',
+        date: new Date(o.createdAt || Date.now()).toISOString().split('T')[0],
+        itemsList: o.items?.map((i: any) => ({
+          name: 'Product ' + i.productVariantId,
+          qty: i.noOfBundles || 1,
+          weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [],
+          price: i.unitRate || 0
+        })) || []
+      }));
+      setOrders(formatted);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Handle Deep Linking from Dashboard
   useEffect(() => {
@@ -91,23 +124,40 @@ export const Bookings = () => {
     setShowActionSheet(true);
   };
 
-  const handleSaveWeights = () => {
+  const handleSaveWeights = async () => {
     if (!activeOrderId) return;
     
-    setOrders(prev => prev.map(order => {
-      if (order.id !== activeOrderId) return order;
-      
+    const orderToUpdate = orders.find(o => o.id === activeOrderId);
+    if (!orderToUpdate) return;
+    
+    try {
       const updatedItemsList = weightsFormData;
       const totalWt = updatedItemsList.reduce((sum, item) => sum + item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0), 0);
       
-      return {
-        ...order,
-        totalWeight: `${totalWt} kg`,
-        itemsList: updatedItemsList,
-        phase: 'Weights Added',
-        action: 'Generate Quotation'
+      const payload = {
+        customerId: "11111111-1111-1111-1111-111111111111", // Mock customer id
+        items: updatedItemsList.map(i => ({
+          productVariantId: "22222222-2222-2222-2222-222222222222",
+          weightKg: totalWt,
+          bundleWeights: i.weights.join(',')
+        }))
       };
-    }));
+
+      await updateOrderWeightsAPI(activeOrderId, payload);
+      
+      setOrders(prev => prev.map(order => {
+        if (order.id !== activeOrderId) return order;
+        return {
+          ...order,
+          totalWeight: `${totalWt} kg`,
+          itemsList: updatedItemsList,
+          phase: 'Weights Added',
+          action: 'Generate Quotation'
+        };
+      }));
+    } catch(e) {
+      console.error(e);
+    }
     
     setShowAddWeightsModal(false);
     setActiveOrderId(null);
@@ -125,9 +175,11 @@ export const Bookings = () => {
     }
   };
 
-  const handleAction = (orderId: string, targetPhase?: string) => {
-    setOrders(prev => prev.map(order => {
-      if (order.id !== orderId) return order;
+  const handleAction = async (orderId: string, targetPhase?: string) => {
+    try {
+      // Find current phase to determine next phase
+      const order = orders.find(o => o.id === orderId);
+      if (!order) return;
       
       const currentIdx = PHASES.findIndex(p => p.phase === order.phase);
       let nextPhase;
@@ -136,19 +188,26 @@ export const Bookings = () => {
         nextPhase = PHASES.find(p => p.phase === targetPhase);
       } else {
         nextPhase = PHASES[currentIdx + 1];
-        // If we are at Bill Uploaded or Partially Dispatched and don't specify target, we default to Full Dispatch (Dispatched)
         if (order.phase === 'Bill Uploaded' || order.phase === 'Partially Dispatched') {
             nextPhase = PHASES.find(p => p.phase === 'Dispatched');
         }
       }
       
       if (nextPhase) {
-        const updated = { ...order, phase: nextPhase.phase, action: nextPhase.action };
-        if (selectedOrder?.id === orderId) setSelectedOrder(updated);
-        return updated;
+        // Send a mock status ID to the backend for the new status
+        await updateOrderStatusAPI(orderId, "33333333-3333-3333-3333-333333333333");
+        
+        setOrders(prev => prev.map(o => {
+          if (o.id !== orderId) return o;
+          const updated = { ...o, phase: nextPhase.phase, action: nextPhase.action };
+          if (selectedOrder?.id === orderId) setSelectedOrder(updated);
+          return updated;
+        }));
       }
-      return order;
-    }));
+    } catch(e) {
+      console.error(e);
+      alert('Failed to update order status');
+    }
   };
 
   const handleShareQuotation = (order: any) => {
@@ -179,35 +238,52 @@ export const Bookings = () => {
     { id: Date.now(), product: 'Green Net 110GSM', qty: 1 }
   ]);
 
-  const handleConfirmBooking = () => {
-    const newId = (1040 + orders.length + 1).toString();
+  const handleConfirmBooking = async () => {
     const customerName = selectedCustomer === 'planet_agro' ? 'Planet Agro' : 
                         selectedCustomer === 'abc_farm' ? 'ABC Farm' : 'New Client';
     
     const totalQty = orderItems.reduce((sum, item) => sum + item.qty, 0);
     
-    const newOrder = {
-      id: newId,
-      customer: customerName,
-      items: totalQty,
-      totalWeight: `Pending`,
-      amount: `₹${(totalQty * 210).toLocaleString()}`,
-      phase: 'Order Created',
-      action: 'Add Weights',
-      date: new Date().toISOString().split('T')[0],
-      itemsList: orderItems.map(item => ({
-        name: item.product,
-        qty: item.qty,
-        weights: Array(item.qty).fill(''),
-        price: 210
+    const payload = {
+      customerId: "11111111-1111-1111-1111-111111111111", // MOCK UUID
+      notes: "Order placed from UI",
+      items: orderItems.map(item => ({
+        productVariantId: "22222222-2222-2222-2222-222222222222", // MOCK UUID
+        noOfBundles: item.qty,
+        unitRate: 210,
+        lineTotal: item.qty * 210
       }))
     };
 
-    setOrders(prev => [newOrder, ...prev]);
-    setTab('ongoing');
-    setWizardStep(1);
-    setSelectedCustomer('');
-    setOrderItems([{ id: Date.now(), product: 'Green Net 110GSM', qty: 1 }]);
+    try {
+      const response = await createOrderAPI(payload);
+      
+      const newOrder = {
+        id: response.id,
+        customer: customerName,
+        items: totalQty,
+        totalWeight: `Pending`,
+        amount: `₹${(response.totalAmount || totalQty * 210).toLocaleString()}`,
+        phase: 'Order Created',
+        action: 'Add Weights',
+        date: new Date().toISOString().split('T')[0],
+        itemsList: orderItems.map(item => ({
+          name: item.product,
+          qty: item.qty,
+          weights: Array(item.qty).fill(''),
+          price: 210
+        }))
+      };
+
+      setOrders(prev => [newOrder, ...prev]);
+      setTab('ongoing');
+      setWizardStep(1);
+      setSelectedCustomer('');
+      setOrderItems([{ id: Date.now(), product: 'Green Net 110GSM', qty: 1 }]);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to create order');
+    }
   };
 
   const handleShareEnquiry = () => {
