@@ -13,9 +13,12 @@ export const BottomNav = () => {
     { to: '/profile', icon: <User size={22} />, label: 'Admin', module: 'Admin' },
   ];
 
-  const filteredItems = navItems.filter(item => 
-    item.module === 'Home' || (user?.modules.includes(item.module))
-  );
+  const filteredItems = navItems.filter(item => {
+    if (item.module === 'Home') return true;
+    if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') return true;
+    if (user?.role === 'SALES' && (item.module === 'Bookings' || item.module === 'Customers')) return true;
+    return false;
+  });
 
   return (
     <nav className="bottom-nav">

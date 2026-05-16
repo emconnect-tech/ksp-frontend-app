@@ -10,6 +10,8 @@ import { Customers } from './pages/Customers';
 import { Reports } from './pages/Reports';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute, PublicRoute } from './components/auth/RouteGuards';
+import { PendingApproval } from './pages/PendingApproval';
+import { Suspended } from './pages/Suspended';
 
 function App() {
   return (
@@ -35,6 +37,11 @@ function App() {
               <Route path="profile" element={<AdminSettings />} />
             </Route>
           </Route>
+
+          {/* Pending / Suspended Routes - Authenticated but no layout */}
+          <Route path="/pending-approval" element={<PendingApproval />} />
+          <Route path="/suspended" element={<Suspended />} />
+
         </Routes>
       </BrowserRouter>
     </AuthProvider>

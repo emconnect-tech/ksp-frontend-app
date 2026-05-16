@@ -24,7 +24,11 @@ export const Dashboard = () => {
     { label: 'Admin', icon: <ShieldCheck size={20} color="var(--color-primary)" />, path: '/profile', module: 'Admin' },
   ];
 
-  const visibleModules = allModules.filter(m => user?.modules.includes(m.module));
+  const visibleModules = allModules.filter(m => {
+    if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') return true;
+    if (user?.role === 'SALES' && (m.module === 'Bookings' || m.module === 'Customers')) return true;
+    return false;
+  });
 
   return (
     <div className="page-content" style={{ animation: 'fadeIn 0.5s ease-out' }}>

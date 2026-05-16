@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
+import { useAuth } from '../contexts/AuthContext';
+import { config } from '../config';
 
 export const AdminSettings = () => {
   const [tab, setTab] = useState('catalog');
   const [showAddProduct, setShowAddProduct] = useState(false);
+  const { token } = useAuth();
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
   // Mock State for Products
   const [products, setProducts] = useState([
@@ -16,44 +20,83 @@ export const AdminSettings = () => {
     { id: 3, name: 'Mulch Film', active: false, gsmMin: 23, gsmMax: 27, variants: [{ size: '25 Micron • 400m', price: 1800 }] },
   ]);
 
-  // Mock State for Users & Access
-  const [users, setUsers] = useState([
-    { id: 1, name: 'Ikram Khan', role: 'Superadmin', status: 'Approved', modules: ['Bookings', 'Materials', 'Stock-In', 'Reports', 'Admin'] },
-    { id: 2, name: 'Suresh Kumar', role: 'Sales', status: 'Pending', modules: ['Bookings', 'Customers'] },
-    { id: 3, name: 'Ramesh Singh', role: 'Production', status: 'Approved', modules: ['Materials', 'Stock-In'] },
-  ]);
+  // Live State for Users
+  const [users, setUsers] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (tab === 'users') {
+      fetchUsers();
+    }
+  }, [tab, searchQuery]);
+
+  const fetchUsers = async () => {
+    try {
+      let urlStr = `${API_BASE_URL}/api/v1/users`;
+      if (searchQuery.trim()) {
+        urlStr += `?search=${encodeURIComponent(searchQuery.trim())}`;
+      }
+      const res = await fetch(urlStr, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch users', e);
+    }
+  };
 
   const toggleProductStatus = (id: number) => {
     setProducts(products.map(p => p.id === id ? { ...p, active: !p.active } : p));
   };
 
-  const updateStatus = (id: number, status: string) => {
-    setUsers(users.map(u => u.id === id ? { ...u, status } : u));
+  const updateStatus = async (id: string, newStatus: string) => {
+    // Optimistic UI update
+    setUsers(users.map(u => u.id === id ? { ...u, status: newStatus } : u));
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus })
+      });
+    } catch (e) {
+      fetchUsers(); // revert on fail
+    }
   };
 
-  const updateRole = (id: number, role: string) => {
-    setUsers(users.map(u => u.id === id ? { ...u, role } : u));
-  };
-
-  const toggleModule = (userId: number, module: string) => {
-    setUsers(users.map(u => {
-      if (u.id !== userId) return u;
-      const modules = u.modules.includes(module)
-        ? u.modules.filter(m => m !== module)
-        : [...u.modules, module];
-      return { ...u, modules };
-    }));
+  const updateRole = async (id: string, newRole: string) => {
+    setUsers(users.map(u => u.id === id ? { ...u, role: newRole } : u));
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ role: newRole })
+      });
+    } catch (e) {
+      fetchUsers(); // revert on fail
+    }
   };
 
   const renderUsersTab = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-        <h3 style={{ margin: 0 }}>Team Management</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0 }}>Team Management</h3>
+          <Input 
+            placeholder="Search by name or phone..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ maxWidth: '300px' }}
+          />
+        </div>
         {users.map(user => (
           <Card key={user.id} style={{ padding: 'var(--space-4)', opacity: user.status === 'Disabled' ? 0.6 : 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-4)' }}>
               <div>
-                <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{user.name}</div>
+                <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{user.name || 'New User'}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>{user.phoneNumber}</div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   Role: 
                   <select 
@@ -71,79 +114,47 @@ export const AdminSettings = () => {
                       fontSize: '0.85rem'
                     }}
                   >
-                    <option value="Superadmin">Superadmin</option>
-                    <option value="Admin">Admin</option>
-                    <option value="Sales">Sales</option>
-                    <option value="Production">Production</option>
-                    <option value="Staff">Staff</option>
+                    <option value="SUPER_ADMIN">Superadmin</option>
+                    <option value="ADMIN">Admin</option>
+                    <option value="SALES">Sales</option>
+                    <option value="PRODUCTION">Production</option>
+                    <option value="STAFF">Staff</option>
                   </select>
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <Badge 
                   status={
-                    user.status === 'Approved' ? 'completed' : 
-                    user.status === 'Pending' ? 'ongoing' : 
-                    'ongoing' // Default for Rejected/Disabled for now, will use colors below
+                    user.status === 'ACTIVE' || user.status === 'Approved' ? 'completed' : 
+                    user.status === 'PENDING' || user.status === 'Pending' ? 'ongoing' : 
+                    'ongoing' 
                   }
                   style={{
-                    background: user.status === 'Rejected' || user.status === 'Disabled' ? '#fff5f5' : undefined,
-                    color: user.status === 'Rejected' || user.status === 'Disabled' ? '#fa5252' : undefined,
-                    borderColor: user.status === 'Rejected' || user.status === 'Disabled' ? '#ffe3e3' : undefined
+                    background: user.status === 'SUSPENDED' || user.status === 'Rejected' || user.status === 'Disabled' ? '#fff5f5' : undefined,
+                    color: user.status === 'SUSPENDED' || user.status === 'Rejected' || user.status === 'Disabled' ? '#fa5252' : undefined,
+                    borderColor: user.status === 'SUSPENDED' || user.status === 'Rejected' || user.status === 'Disabled' ? '#ffe3e3' : undefined
                   }}
                 >
                   {user.status}
                 </Badge>
                 
                 <div style={{ display: 'flex', gap: '4px', marginTop: '8px', justifyContent: 'flex-end' }}>
-                  {user.status === 'Pending' && (
+                  {(user.status === 'PENDING' || user.status === 'Pending') && (
                     <>
-                      <Button variant="primary" style={{ padding: '2px 8px', fontSize: '0.7rem' }} onClick={() => updateStatus(user.id, 'Approved')}>Approve</Button>
-                      <Button variant="outline" style={{ padding: '2px 8px', fontSize: '0.7rem', color: '#fa5252' }} onClick={() => updateStatus(user.id, 'Rejected')}>Reject</Button>
+                      <Button variant="primary" style={{ padding: '2px 8px', fontSize: '0.7rem' }} onClick={() => updateStatus(user.id, 'ACTIVE')}>Approve</Button>
+                      <Button variant="outline" style={{ padding: '2px 8px', fontSize: '0.7rem', color: '#fa5252' }} onClick={() => updateStatus(user.id, 'SUSPENDED')}>Reject</Button>
                     </>
                   )}
-                  {user.status === 'Approved' && (
-                    <Button variant="outline" style={{ padding: '2px 8px', fontSize: '0.7rem' }} onClick={() => updateStatus(user.id, 'Disabled')}>Disable</Button>
+                  {(user.status === 'ACTIVE' || user.status === 'Approved') && (
+                    <Button variant="outline" style={{ padding: '2px 8px', fontSize: '0.7rem' }} onClick={() => updateStatus(user.id, 'SUSPENDED')}>Disable</Button>
                   )}
-                  {user.status === 'Disabled' && (
-                    <Button variant="primary" style={{ padding: '2px 8px', fontSize: '0.7rem' }} onClick={() => updateStatus(user.id, 'Approved')}>Enable</Button>
-                  )}
-                  {user.status === 'Rejected' && (
-                    <Button variant="outline" style={{ padding: '2px 8px', fontSize: '0.7rem' }} onClick={() => updateStatus(user.id, 'Pending')}>Reset</Button>
+                  {(user.status === 'SUSPENDED' || user.status === 'Disabled') && (
+                    <Button variant="primary" style={{ padding: '2px 8px', fontSize: '0.7rem' }} onClick={() => updateStatus(user.id, 'ACTIVE')}>Enable</Button>
                   )}
                 </div>
               </div>
             </div>
 
-            <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: '0 0 var(--space-4) 0' }} />
-            
-            <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-2)' }}>Module Access</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-                {['Bookings', 'Materials', 'Stock-In', 'Reports', 'Admin'].map(mod => {
-                  const hasAccess = user.modules.includes(mod);
-                  return (
-                    <div 
-                      key={mod}
-                      onClick={() => toggleModule(user.id, mod)}
-                      style={{ 
-                        padding: '4px 10px', 
-                        borderRadius: '20px', 
-                        fontSize: '0.75rem', 
-                        background: hasAccess ? 'var(--color-primary-light)' : 'var(--color-surface-muted)',
-                        color: hasAccess ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                        border: `1px solid ${hasAccess ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                        cursor: 'pointer',
-                        fontWeight: hasAccess ? 600 : 400,
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      {mod} {hasAccess ? '✓' : ''}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           </Card>
         ))}
       </div>
