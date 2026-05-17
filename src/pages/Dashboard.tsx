@@ -11,9 +11,11 @@ import { Card } from '../design-system/components/ui/Card';
 import { Button } from '../design-system/components/ui/Button';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const allModules = [
     { label: 'Orders', icon: <ShoppingBag size={20} color="var(--color-primary)" />, path: '/bookings', module: 'Bookings' },
@@ -107,7 +109,7 @@ export const Dashboard = () => {
             <Button 
               key={m.label}
               variant="outline" 
-              onClick={() => window.location.href = m.path}
+              onClick={() => navigate(m.path)}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-4)', height: 'auto', background: 'white' }}
             >
               {m.icon}

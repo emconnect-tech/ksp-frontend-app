@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { config } from '../config';
 
 interface User {
   id: string;
@@ -45,6 +46,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phone: payload.phone,
               orgId: payload.orgId
             });
+
+            if (config.USE_MOCK_API) {
+              setLoading(false);
+              return;
+            }
 
             // Fetch live data from backend
             const res = await fetch(`${API_BASE_URL}/api/v1/users/me`, {
