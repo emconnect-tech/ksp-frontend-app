@@ -76,7 +76,9 @@ export const Login = () => {
       if (config.USE_MOCK_API) {
         setTimeout(() => {
           if (otp === '1234') {
-            login('mock_jwt_token_for_development');
+            // A valid JWT format with dummy payload to pass `atob` parsing in AuthContext
+            const mockJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtb2NrLXVzZXIiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzdGF0dXMiOiJBQ1RJVkUiLCJwaG9uZSI6Iis5MTk5OTk5OTk5OTkiLCJvcmdJZCI6Im9yZy0xIn0=.signature';
+            login(mockJwt);
             navigate('/');
           } else {
             alert('Invalid Mock OTP. Use 1234.');

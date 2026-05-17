@@ -56,11 +56,12 @@ export const AdminSettings = () => {
     // Optimistic UI update
     setUsers(users.map(u => u.id === id ? { ...u, status: newStatus } : u));
     try {
-      await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: newStatus })
       });
+      if (!res.ok) throw new Error('Update failed');
     } catch (e) {
       fetchUsers(); // revert on fail
     }
@@ -69,11 +70,12 @@ export const AdminSettings = () => {
   const updateRole = async (id: string, newRole: string) => {
     setUsers(users.map(u => u.id === id ? { ...u, role: newRole } : u));
     try {
-      await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ role: newRole })
       });
+      if (!res.ok) throw new Error('Update failed');
     } catch (e) {
       fetchUsers(); // revert on fail
     }
@@ -116,7 +118,6 @@ export const AdminSettings = () => {
                   >
                     <option value="SUPER_ADMIN">Superadmin</option>
                     <option value="ADMIN">Admin</option>
-                    <option value="SALES">Sales</option>
                     <option value="PRODUCTION">Production</option>
                     <option value="STAFF">Staff</option>
                   </select>

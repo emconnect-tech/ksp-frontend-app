@@ -16,7 +16,6 @@ export const BottomNav = () => {
   const filteredItems = navItems.filter(item => {
     if (item.module === 'Home') return true;
     if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') return true;
-    if (user?.role === 'SALES' && (item.module === 'Bookings' || item.module === 'Customers')) return true;
     return false;
   });
 

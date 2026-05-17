@@ -26,7 +26,8 @@ export const Dashboard = () => {
 
   const visibleModules = allModules.filter(m => {
     if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') return true;
-    if (user?.role === 'SALES' && (m.module === 'Bookings' || m.module === 'Customers')) return true;
+    if (user?.role === 'PRODUCTION' && m.module === 'Materials') return true;
+    if (user?.role === 'STAFF' && m.module === 'Stock-In') return true;
     return false;
   });
 
