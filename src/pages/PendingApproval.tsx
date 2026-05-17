@@ -1,7 +1,7 @@
 import { Card } from '../design-system/components/ui/Card';
 import { Button } from '../design-system/components/ui/Button';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 
 export const PendingApproval = () => {

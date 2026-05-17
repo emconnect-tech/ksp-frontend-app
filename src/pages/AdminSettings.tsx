@@ -5,7 +5,6 @@ import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
 import { useAuth } from '../contexts/AuthContext';
-import { config } from '../config';
 
 export const AdminSettings = () => {
   const [tab, setTab] = useState('catalog');
