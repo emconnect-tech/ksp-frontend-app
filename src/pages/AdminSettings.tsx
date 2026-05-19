@@ -95,6 +95,7 @@ export const AdminSettings = () => {
   const [newProductDesc, setNewProductDesc] = useState('');
 
   const [addingVariantForProductId, setAddingVariantForProductId] = useState<string | null>(null);
+  const [newVariantGsm, setNewVariantGsm] = useState('');
   const [newVariantSize, setNewVariantSize] = useState('');
   const [newVariantRate, setNewVariantRate] = useState('');
   const [newVariantWeight, setNewVariantWeight] = useState('');
@@ -133,19 +134,21 @@ export const AdminSettings = () => {
   };
 
   const handleAddVariant = async (productId: string) => {
-    if (!newVariantSize.trim() || !newVariantRate.trim()) return;
+    if (!newVariantRate.trim()) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/products/${productId}/variants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
-          size: newVariantSize,
+          gsm: newVariantGsm ? parseInt(newVariantGsm) : null,
+          size: newVariantSize || null,
           rateOverride: parseFloat(newVariantRate),
           weightPerBundleKg: newVariantWeight ? parseFloat(newVariantWeight) : null,
         })
       });
       if (res.ok) {
         setAddingVariantForProductId(null);
+        setNewVariantGsm('');
         setNewVariantSize('');
         setNewVariantRate('');
         setNewVariantWeight('');
@@ -410,7 +413,7 @@ export const AdminSettings = () => {
                 </div>
                 {product.variants && product.variants.map((v: any, i: number) => (
                   <div key={v.id || i} style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.85rem' }}>{v.size} {v.weightPerBundleKg ? `• ${v.weightPerBundleKg}kg` : ''}</span>
+                    <span style={{ fontSize: '0.85rem' }}>{v.gsm ? `${v.gsm} GSM` : ''}{v.gsm && v.size ? ' • ' : ''}{v.size || ''}{v.weightPerBundleKg ? ` • ${v.weightPerBundleKg}kg/bundle` : ''}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                       <strong style={{ fontSize: '0.85rem' }}>₹{v.rateOverride}</strong>
                       {canDelete && v.id && (
@@ -428,7 +431,10 @@ export const AdminSettings = () => {
                 {canManageCatalog && (
                   addingVariantForProductId === product.id ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)', padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)' }}>
-                      <Input placeholder="Size (e.g. 110GSM • 30x60)" value={newVariantSize} onChange={e => setNewVariantSize(e.target.value)} />
+                      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <Input placeholder="GSM (e.g. 110)" type="number" value={newVariantGsm} onChange={e => setNewVariantGsm(e.target.value)} style={{ flex: 1 }} />
+                        <Input placeholder="Size (e.g. 30x60)" value={newVariantSize} onChange={e => setNewVariantSize(e.target.value)} style={{ flex: 1 }} />
+                      </div>
                       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                         <Input placeholder="Rate (₹)" type="number" value={newVariantRate} onChange={e => setNewVariantRate(e.target.value)} style={{ flex: 1 }} />
                         <Input placeholder="Wt/bundle (kg)" type="number" value={newVariantWeight} onChange={e => setNewVariantWeight(e.target.value)} style={{ flex: 1 }} />
@@ -442,7 +448,7 @@ export const AdminSettings = () => {
                     <Button
                       variant="outline"
                       style={{ width: '100%', borderStyle: 'dashed', fontSize: '0.8rem', padding: 'var(--space-1)' }}
-                      onClick={() => { setAddingVariantForProductId(product.id); setNewVariantSize(''); setNewVariantRate(''); setNewVariantWeight(''); }}
+                      onClick={() => { setAddingVariantForProductId(product.id); setNewVariantGsm(''); setNewVariantSize(''); setNewVariantRate(''); setNewVariantWeight(''); }}
                     >
                       + Add Price Record
                     </Button>

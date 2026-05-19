@@ -73,11 +73,21 @@ export const StockIn = () => {
   };
 
   const handleStartEdit = () => {
+    const variantId = selectedEntry.productVariantId || '';
+    let gsm = String(selectedEntry.gsm || '');
+    let size = selectedEntry.size || '';
+    if (variantId) {
+      const variant = findVariant(variantId);
+      if (variant) {
+        gsm = String(variant.gsm ?? gsm);
+        size = variant.size ?? size;
+      }
+    }
     setEditData({
-      productVariantId: selectedEntry.productVariantId || '',
+      productVariantId: variantId,
       entryDate: selectedEntry.entryDate ? selectedEntry.entryDate.substring(0, 19) : '',
-      gsm: String(selectedEntry.gsm || ''),
-      size: selectedEntry.size || '',
+      gsm,
+      size,
       bundles: String(selectedEntry.noOfBundles || ''),
       weightKg: String(selectedEntry.weightKg || ''),
       notes: selectedEntry.notes || '',
@@ -173,11 +183,11 @@ export const StockIn = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Stock Type / Product</label>
-                <select className="input-field" value={editData.productVariantId} onChange={e => setEditData({...editData, productVariantId: e.target.value})} required>
+                <select className="input-field" value={editData.productVariantId} onChange={e => handleEditVariantChange(e.target.value)} required>
                   <option value="" disabled>Select Product Variant...</option>
                   {productsList.map((p: any) =>
                     p.variants?.map((v: any) => (
-                      <option key={v.id} value={v.id}>{p.name} - {v.size}</option>
+                      <option key={v.id} value={v.id}>{p.name}{v.gsm ? ` - ${v.gsm} GSM` : ''}{v.size ? ` • ${v.size}` : ''}</option>
                     ))
                   )}
                 </select>
@@ -185,11 +195,11 @@ export const StockIn = () => {
               <div className="grid-layout">
                 <div>
                   <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-                  <Input type="number" value={editData.gsm} onChange={e => setEditData({...editData, gsm: e.target.value})} required min="1" />
+                  <Input type="number" value={editData.gsm} onChange={e => setEditData({...editData, gsm: e.target.value})} required min="1" readOnly={!!editData.productVariantId} style={editData.productVariantId ? { background: 'var(--color-surface)', color: 'var(--color-text-muted)' } : {}} />
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Size</label>
-                  <Input type="text" value={editData.size} onChange={e => setEditData({...editData, size: e.target.value})} />
+                  <Input type="text" value={editData.size} onChange={e => setEditData({...editData, size: e.target.value})} readOnly={!!editData.productVariantId} style={editData.productVariantId ? { background: 'var(--color-surface)', color: 'var(--color-text-muted)' } : {}} />
                 </div>
               </div>
               <div className="grid-layout">
@@ -281,6 +291,32 @@ export const StockIn = () => {
     notes: ''
   });
 
+  const findVariant = (variantId: string) => {
+    for (const p of productsList) {
+      const v = p.variants?.find((v: any) => v.id === variantId);
+      if (v) return v;
+    }
+    return null;
+  };
+
+  const handleVariantChange = (variantId: string) => {
+    const variant = findVariant(variantId);
+    if (variant) {
+      setFormData(prev => ({ ...prev, productVariantId: variantId, gsm: String(variant.gsm ?? ''), size: variant.size ?? '' }));
+    } else {
+      setFormData(prev => ({ ...prev, productVariantId: variantId }));
+    }
+  };
+
+  const handleEditVariantChange = (variantId: string) => {
+    const variant = findVariant(variantId);
+    if (variant) {
+      setEditData((prev: any) => ({ ...prev, productVariantId: variantId, gsm: String(variant.gsm ?? ''), size: variant.size ?? '' }));
+    } else {
+      setEditData((prev: any) => ({ ...prev, productVariantId: variantId }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (config.USE_MOCK_API) {
@@ -336,24 +372,24 @@ export const StockIn = () => {
             
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Stock Type / Product</label>
-              <select className="input-field" value={formData.productVariantId} onChange={e => setFormData({...formData, productVariantId: e.target.value})} required>
+              <select className="input-field" value={formData.productVariantId} onChange={e => handleVariantChange(e.target.value)} required>
                 <option value="" disabled>Select Product Variant...</option>
-                {productsList.map(p => 
+                {productsList.map(p =>
                   p.variants?.map((v: any) => (
-                    <option key={v.id} value={v.id}>{p.name} - {v.size}</option>
+                    <option key={v.id} value={v.id}>{p.name}{v.gsm ? ` - ${v.gsm} GSM` : ''}{v.size ? ` • ${v.size}` : ''}</option>
                   ))
                 )}
               </select>
             </div>
-  
+
             <div className="grid-layout">
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-                <Input type="number" placeholder="e.g. 110" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required min="1" />
+                <Input type="number" placeholder="e.g. 110" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required min="1" readOnly={!!formData.productVariantId} style={formData.productVariantId ? { background: 'var(--color-surface)', color: 'var(--color-text-muted)' } : {}} />
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Size</label>
-                <Input type="text" placeholder="e.g. 30x60" value={formData.size} onChange={e => setFormData({...formData, size: e.target.value})} />
+                <Input type="text" placeholder="e.g. 30x60" value={formData.size} onChange={e => setFormData({...formData, size: e.target.value})} readOnly={!!formData.productVariantId} style={formData.productVariantId ? { background: 'var(--color-surface)', color: 'var(--color-text-muted)' } : {}} />
               </div>
             </div>
   
