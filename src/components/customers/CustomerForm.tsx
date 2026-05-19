@@ -22,11 +22,20 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({
   submitLabel = 'Save Customer',
   isCompact = false
 }) => {
+  const [name, setName] = React.useState(initialData?.name || '');
+  const [phone, setPhone] = React.useState(initialData?.phone || '');
+  const [email, setEmail] = React.useState(initialData?.email || '');
+  const [address, setAddress] = React.useState(initialData?.address || '');
+
+  const handleSubmit = () => {
+    onSubmit({ name, phoneNumber: phone, email, place: address, transportName: '' });
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: isCompact ? 'var(--space-3)' : 'var(--space-4)' }}>
       <div>
         <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Full Name</label>
-        <Input defaultValue={initialData?.name} placeholder="Enter customer name" />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter customer name" />
       </div>
       
       <div>
@@ -37,23 +46,23 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({
             background: 'var(--color-surface-muted)', border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-md)', fontSize: '0.9rem', color: 'var(--color-text-muted)'
           }}>+91</div>
-          <Input defaultValue={initialData?.phone} placeholder="Phone number" style={{ flex: 1 }} maxLength={10} />
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" style={{ flex: 1 }} maxLength={10} />
         </div>
       </div>
 
       <div>
-        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Email (Optional)</label>
-        <Input defaultValue={initialData?.email} placeholder="email@example.com" />
+        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Email / Transport Name (Optional)</label>
+        <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Transport Name or Email" />
       </div>
 
       <div>
-        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Address</label>
-        <Input defaultValue={initialData?.address} placeholder="Enter delivery address" />
+        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Place / Address</label>
+        <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Enter place / address" />
       </div>
       
       <div style={{ display: 'flex', gap: 'var(--space-4)', marginTop: isCompact ? 'var(--space-2)' : 'var(--space-4)' }}>
         <Button variant="outline" style={{ flex: 1 }} onClick={onCancel}>Cancel</Button>
-        <Button variant="primary" style={{ flex: 1 }} onClick={() => onSubmit({})}>{submitLabel}</Button>
+        <Button variant="primary" style={{ flex: 1 }} onClick={handleSubmit}>{submitLabel}</Button>
       </div>
     </div>
   );

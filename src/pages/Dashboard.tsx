@@ -1,6 +1,7 @@
-import { 
-  ChevronRight, 
-  ShoppingBag, 
+import { useState, useEffect } from 'react';
+import {
+  ChevronRight,
+  ShoppingBag,
   Factory,
   Package,
   Users,
@@ -14,8 +15,26 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export const Dashboard = () => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const navigate = useNavigate();
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+  const [stats, setStats] = useState({
+    todayOrdersCount: 0,
+    quotesCount: 0,
+    billsCount: 0,
+    weightInKgToday: 0,
+    weightOutKgToday: 0,
+  });
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/v1/dashboard/stats`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setStats(data); })
+      .catch(() => {});
+  }, [token]);
 
   const allModules = [
     { label: 'Orders', icon: <ShoppingBag size={20} color="var(--color-primary)" />, path: '/bookings', module: 'Bookings' },
@@ -63,7 +82,7 @@ export const Dashboard = () => {
               <ShoppingBag size={14} opacity={0.9} />
               <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, opacity: 0.9 }}>Today's Orders</p>
             </div>
-            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>12 Orders</h2>
+            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>{stats.todayOrdersCount} Orders</h2>
           </Card>
 
           {/* Sales Card 2 */}
@@ -71,12 +90,12 @@ export const Dashboard = () => {
             <p style={{ margin: '0 0 8px 0', fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Sales Status</p>
             <div style={{ display: 'flex', gap: '12px' }}>
               <div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-primary)' }}>8</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-primary)' }}>{stats.quotesCount}</div>
                 <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)' }}>Quotes</div>
               </div>
               <div style={{ width: '1px', background: 'var(--color-border)' }}></div>
               <div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-secondary)' }}>4</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-secondary)' }}>{stats.billsCount}</div>
                 <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)' }}>Bills</div>
               </div>
             </div>
@@ -88,14 +107,9 @@ export const Dashboard = () => {
               <Factory size={14} opacity={0.9} />
               <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, opacity: 0.9 }}>Weight In / Out</p>
             </div>
-            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>1.2t / 0.8t</h2>
-          </Card>
-
-          {/* Production Card 2 */}
-          <Card style={{ flex: '0 0 220px', border: '1px solid var(--color-border)' }}>
-            <p style={{ margin: '0 0 8px 0', fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Stock Audits</p>
-            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, color: 'var(--color-secondary)' }}>14 Items</h2>
-            <p style={{ margin: 0, fontSize: '0.6rem', color: 'var(--color-error)', fontWeight: 600 }}>6 Priority Required</p>
+            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>
+              {(stats.weightInKgToday / 1000).toFixed(1)}t / {(stats.weightOutKgToday / 1000).toFixed(1)}t
+            </h2>
           </Card>
 
         </div>

@@ -6,7 +6,10 @@ import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
 import { CustomerForm } from '../components/customers/CustomerForm';
-import { fetchOrders, createOrderAPI, updateOrderWeightsAPI, updateOrderStatusAPI } from '../api';
+import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
+import { config } from '../config';
+import { fetchOrders, createOrderAPI, updateOrderWeightsAPI, updateOrderStatusAPI, fetchOrderByIdAPI } from '../api';
 
 // Lifecycle Phases
 const PHASES = [
@@ -35,31 +38,93 @@ export const Bookings = () => {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
 
+  const [customersList, setCustomersList] = useState<any[]>([]);
+  const [productsList, setProductsList] = useState<any[]>([]);
+  const [statusMap, setStatusMap] = useState<Record<string, string>>({}); // name -> id
+  const { token } = useAuth();
+  const { canDelete } = usePermissions();
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
   useEffect(() => {
     loadOrders();
+    loadMasterData();
+    loadStatuses();
   }, []);
+
+  const loadStatuses = async () => {
+    if (config.USE_MOCK_API) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/statuses`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data: Array<{ id: string; name: string }> = await res.json();
+        const map: Record<string, string> = {};
+        data.forEach(s => { map[s.name] = s.id; });
+        setStatusMap(map);
+      }
+    } catch (e) {
+      console.error('Failed to load statuses', e);
+    }
+  };
+
+  const loadMasterData = async () => {
+    if (config.USE_MOCK_API) {
+      setCustomersList([{ id: '11111111-1111-1111-1111-111111111111', name: 'Planet Agro (Mock)' }]);
+      setProductsList([{ id: 'mock-prod-1', name: 'Green Net', variants: [{ id: '22222222-2222-2222-2222-222222222222', size: '110GSM', rateOverride: 210 }] }]);
+      return;
+    }
+    try {
+      const custRes = await fetch(`${API_BASE_URL}/api/v1/customers`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (custRes.ok) setCustomersList(await custRes.json());
+
+      const prodRes = await fetch(`${API_BASE_URL}/api/v1/products`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (prodRes.ok) setProductsList(await prodRes.json());
+    } catch (e) {
+      console.error('Failed to load master data', e);
+    }
+  };
+
+  const mapPhase = (statusName: string | null, totalWeightKg: number | null): { phase: string; action: string | null } => {
+    switch (statusName) {
+      case 'CONFIRMED':    return { phase: 'Bill Uploaded',      action: 'Dispatch (Full/Partial)' };
+      case 'DISPATCHED':   return { phase: 'Dispatched',         action: 'Upload LR Photo' };
+      case 'COMPLETED':    return { phase: 'Completed',          action: null };
+      default:
+        // QUOTATION is both the initial status and the "quotation generated" status.
+        // Presence of weights means weights have been entered, so the quotation is ready.
+        return (totalWeightKg && totalWeightKg > 0)
+          ? { phase: 'Quotation Generated', action: 'Upload Bill' }
+          : { phase: 'Order Created',       action: 'Add Weights' };
+    }
+  };
 
   const loadOrders = async () => {
     try {
       const data = await fetchOrders();
-      // Map backend response to frontend state if needed
-      // Mock formatting for now
-      const formatted = data.map((o: any) => ({
-        id: o.id || o.orderNumber,
-        customer: o.customerId ? 'Customer ' + o.customerId : 'Unknown',
-        items: o.items?.length || 0,
-        totalWeight: o.totalWeightKg ? `${o.totalWeightKg} kg` : 'Pending',
-        amount: `₹${(o.totalAmount || 0).toLocaleString()}`,
-        phase: o.statusId ? 'Order Created' : 'Order Created', // Map real status here
-        action: 'Add Weights',
-        date: new Date(o.createdAt || Date.now()).toISOString().split('T')[0],
-        itemsList: o.items?.map((i: any) => ({
-          name: 'Product ' + i.productVariantId,
-          qty: i.noOfBundles || 1,
-          weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [],
-          price: i.unitRate || 0
-        })) || []
-      }));
+      const formatted = data.map((o: any) => {
+        const { phase, action } = mapPhase(o.statusName, o.totalWeightKg);
+        return {
+          id: o.id || o.orderNumber,
+          orderNumber: o.orderNumber,
+          customerId: o.customerId,
+          customer: o.customerId ? 'Customer ' + o.customerId.substring(0, 4) : 'Unknown',
+          items: o.items?.length || 0,
+          totalWeight: o.totalWeightKg ? `${o.totalWeightKg} kg` : 'Pending',
+          amount: `₹${(o.totalAmount || 0).toLocaleString()}`,
+          phase,
+          action,
+          date: new Date(o.createdAt || Date.now()).toISOString().split('T')[0],
+          itemsList: o.items?.map((i: any) => ({
+            id: i.id,
+            variantId: i.productVariantId,
+            name: 'Product ' + i.productVariantId.substring(0, 4),
+            qty: i.noOfBundles || 1,
+            weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [],
+            price: i.unitRate || 0
+          })) || []
+        };
+      });
       setOrders(formatted);
     } catch (e) {
       console.error(e);
@@ -79,29 +144,56 @@ export const Bookings = () => {
     }
   }, [orders]);
 
-  const handleViewDetails = (order: any) => {
+  const handleViewDetails = async (order: any) => {
     setSelectedOrder(order);
     setView('details');
+    try {
+      const full = await fetchOrderByIdAPI(order.id);
+      if (full) {
+        setSelectedOrder((prev: any) => ({ ...prev, attachments: full.attachments || [] }));
+      }
+    } catch (e) {
+      console.error('Failed to fetch order details', e);
+    }
   };
 
-  const handleUndo = (orderId: string) => {
-    setOrders(prev => prev.map(order => {
-      if (order.id !== orderId) return order;
-      
-      const currentIdx = PHASES.findIndex(p => p.phase === order.phase);
-      const prevPhase = PHASES[currentIdx - 1];
-      
-      if (prevPhase) {
-        const updated = { ...order, phase: prevPhase.phase, action: prevPhase.action };
-        if (selectedOrder?.id === orderId) setSelectedOrder(updated);
-        return updated;
-      }
-      return order;
-    }));
+  // Maps current phase → { db status to revert to, phase to show after undo }
+  // Only phases with a distinct DB status transition are undoable.
+  const UNDO_MAP: Record<string, { statusName: string; phase: string; action: string | null }> = {
+    'Bill Uploaded':        { statusName: 'QUOTATION',  phase: 'Quotation Generated', action: 'Upload Bill' },
+    'Partially Dispatched': { statusName: 'CONFIRMED',  phase: 'Bill Uploaded',        action: 'Dispatch (Full/Partial)' },
+    'Dispatched':           { statusName: 'CONFIRMED',  phase: 'Bill Uploaded',        action: 'Dispatch (Full/Partial)' },
+    'Completed':            { statusName: 'DISPATCHED', phase: 'Dispatched',           action: 'Upload LR Photo' },
+  };
+
+  const handleUndo = async (orderId: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    const undoTarget = UNDO_MAP[order.phase];
+    if (!undoTarget) return; // phases sharing QUOTATION status have no meaningful DB undo
+
+    const statusId = statusMap[undoTarget.statusName];
+    if (!statusId) {
+      console.warn('Status ID not found for', undoTarget.statusName);
+      return;
+    }
+
+    try {
+      await updateOrderStatusAPI(orderId, statusId);
+      const phaseUpdate = { phase: undoTarget.phase, action: undoTarget.action };
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...phaseUpdate } : o));
+      if (selectedOrder?.id === orderId) setSelectedOrder((prev: any) => ({ ...prev, ...phaseUpdate }));
+    } catch (e) {
+      console.error('Failed to undo', e);
+      alert('Failed to undo last step');
+    }
   };
 
   const [showAddWeightsModal, setShowAddWeightsModal] = useState(false);
   const [weightsFormData, setWeightsFormData] = useState<any[]>([]);
+  const extraFileInputRef = useRef<HTMLInputElement>(null);
+  const [addPhotoContext, setAddPhotoContext] = useState<{ orderId: string; attachmentType: string } | null>(null);
 
   const handleButtonClick = (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
@@ -132,29 +224,35 @@ export const Bookings = () => {
     
     try {
       const updatedItemsList = weightsFormData;
-      const totalWt = updatedItemsList.reduce((sum, item) => sum + item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0), 0);
-      
+
       const payload = {
-        customerId: "11111111-1111-1111-1111-111111111111", // Mock customer id
-        items: updatedItemsList.map(i => ({
-          productVariantId: "22222222-2222-2222-2222-222222222222",
-          weightKg: totalWt,
-          bundleWeights: i.weights.join(',')
-        }))
+        customerId: orderToUpdate.customerId,
+        items: updatedItemsList.map(i => {
+          const itemWt = i.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0);
+          return {
+            productVariantId: i.variantId,
+            weightKg: itemWt,
+            bundleWeights: i.weights.join(',')
+          };
+        })
       };
 
       await updateOrderWeightsAPI(activeOrderId, payload);
       
+      const grandTotalWt = updatedItemsList.reduce((sum, item) => sum + item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0), 0);
+      const updatedOrder = {
+        totalWeight: `${grandTotalWt} kg`,
+        itemsList: updatedItemsList,
+        phase: 'Quotation Generated',
+        action: 'Upload Bill'
+      };
       setOrders(prev => prev.map(order => {
         if (order.id !== activeOrderId) return order;
-        return {
-          ...order,
-          totalWeight: `${totalWt} kg`,
-          itemsList: updatedItemsList,
-          phase: 'Weights Added',
-          action: 'Generate Quotation'
-        };
+        return { ...order, ...updatedOrder };
       }));
+      if (selectedOrder?.id === activeOrderId) {
+        setSelectedOrder((prev: any) => ({ ...prev, ...updatedOrder }));
+      }
     } catch(e) {
       console.error(e);
     }
@@ -163,15 +261,145 @@ export const Bookings = () => {
     setActiveOrderId(null);
   };
 
+  const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
+  const [itemPrices, setItemPrices] = useState<number[]>([]);
+  const [itemQtys, setItemQtys] = useState<number[]>([]);
+  const [savingPrices, setSavingPrices] = useState(false);
+
+  useEffect(() => {
+    if (selectedOrder?.itemsList) {
+      setItemPrices(selectedOrder.itemsList.map((i: any) => i.price || 0));
+      setItemQtys(selectedOrder.itemsList.map((i: any) => i.qty || 1));
+    }
+  }, [selectedOrder?.id]);
+
+  const handleSavePrices = async () => {
+    if (!selectedOrder) return;
+    setSavingPrices(true);
+    try {
+      const payload = {
+        customerId: selectedOrder.customerId,
+        items: selectedOrder.itemsList.map((item: any, idx: number) => ({
+          productVariantId: item.variantId,
+          noOfBundles: itemQtys[idx] ?? item.qty,
+          unitRate: itemPrices[idx],
+          lineTotal: (itemQtys[idx] ?? item.qty) * itemPrices[idx]
+        }))
+      };
+      await updateOrderWeightsAPI(selectedOrder.id, payload);
+      const newTotal = selectedOrder.itemsList.reduce((sum: number, item: any, idx: number) => sum + (itemQtys[idx] ?? item.qty) * (itemPrices[idx] || 0), 0);
+      const updated = {
+        ...selectedOrder,
+        amount: `₹${newTotal.toLocaleString()}`,
+        itemsList: selectedOrder.itemsList.map((item: any, idx: number) => ({ ...item, qty: itemQtys[idx] ?? item.qty, price: itemPrices[idx] }))
+      };
+      setSelectedOrder(updated);
+      setOrders(prev => prev.map(o => o.id === selectedOrder.id ? updated : o));
+    } catch (e) {
+      console.error('Failed to save prices', e);
+      alert('Failed to save prices');
+    } finally {
+      setSavingPrices(false);
+    }
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!confirmDeleteOrderId) return;
+    const orderId = confirmDeleteOrderId;
+    setConfirmDeleteOrderId(null);
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      if (selectedOrder?.id === orderId) setView('list');
+    } catch (e) {
+      console.error('Failed to delete order', e);
+      alert('Failed to delete order');
+    }
+  };
+
   const [dispatchType, setDispatchType] = useState<'Full' | 'Partial' | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0 && activeOrderId) {
-      handleAction(activeOrderId, dispatchType === 'Partial' ? 'Partially Dispatched' : undefined);
+  const getAttachmentType = (phase: string) => {
+    if (phase === 'Dispatched') return 'LR_PHOTO';
+    if (phase === 'Bill Uploaded' || phase === 'Partially Dispatched') return 'DISPATCH_PHOTO';
+    return 'INVOICE';
+  };
+
+  // Which attachment types belong to each workflow phase
+  const PHASE_ATTACHMENT_TYPES: Record<string, string[]> = {
+    'Bill Uploaded':        ['INVOICE'],
+    'Partially Dispatched': ['DISPATCH_PHOTO'],
+    'Dispatched':           ['DISPATCH_PHOTO'],
+    'Completed':            ['LR_PHOTO'],
+  };
+
+  const uploadFiles = async (files: File[], orderId: string, attachmentType: string) => {
+    for (const file of files) {
+      const presignRes = await fetch(`${API_BASE_URL}/api/v1/orders/${orderId}/attachments/presign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ type: attachmentType, fileName: file.name, contentType: file.type || 'application/octet-stream' })
+      });
+      if (!presignRes.ok) throw new Error('Failed to get upload URL');
+      const { uploadUrl, key } = await presignRes.json();
+
+      const s3Res = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file
+      });
+      if (!s3Res.ok) throw new Error('S3 upload failed');
+
+      await fetch(`${API_BASE_URL}/api/v1/orders/${orderId}/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ key, type: attachmentType, fileName: file.name })
+      });
+    }
+  };
+
+  const handleExtraFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length || !addPhotoContext) return;
+    const { orderId, attachmentType } = addPhotoContext;
+    setAddPhotoContext(null);
+    try {
+      await uploadFiles(files, orderId, attachmentType);
+      const full = await fetchOrderByIdAPI(orderId);
+      if (full) setSelectedOrder((prev: any) => ({ ...prev, attachments: full.attachments || [] }));
+    } catch (err) {
+      console.error('Extra upload failed', err);
+      alert('Upload failed. Please try again.');
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length || !activeOrderId) return;
+    e.target.value = '';
+
+    const order = orders.find(o => o.id === activeOrderId);
+    if (!order) return;
+
+    const attachmentType = getAttachmentType(order.phase);
+    const targetPhase = dispatchType === 'Partial' ? 'Partially Dispatched' : undefined;
+    setShowActionSheet(false);
+
+    try {
+      await uploadFiles(files, activeOrderId, attachmentType);
+      await handleAction(activeOrderId, targetPhase);
+      const full = await fetchOrderByIdAPI(activeOrderId);
+      if (full) setSelectedOrder((prev: any) => ({ ...prev, attachments: full.attachments || [] }));
+    } catch (err) {
+      console.error('Upload failed', err);
+      alert('File upload failed. Please try again.');
+    } finally {
       setActiveOrderId(null);
       setDispatchType(null);
-      setShowActionSheet(false);
-      e.target.value = '';
     }
   };
 
@@ -194,15 +422,26 @@ export const Bookings = () => {
       }
       
       if (nextPhase) {
-        // Send a mock status ID to the backend for the new status
-        await updateOrderStatusAPI(orderId, "33333333-3333-3333-3333-333333333333");
+        const phaseToStatus: Record<string, string> = {
+          'Quotation Generated': 'QUOTATION',
+          'Bill Uploaded': 'CONFIRMED',
+          'Dispatched': 'DISPATCHED',
+          'Partially Dispatched': 'DISPATCHED',
+          'Completed': 'COMPLETED',
+        };
+        const dbStatusName = phaseToStatus[nextPhase.phase];
+        const realStatusId = dbStatusName && statusMap[dbStatusName]
+          ? statusMap[dbStatusName]
+          : Object.values(statusMap)[0];
+        if (!realStatusId) {
+          console.warn('No status ID found for phase', nextPhase.phase);
+          return;
+        }
+        await updateOrderStatusAPI(orderId, realStatusId);
         
-        setOrders(prev => prev.map(o => {
-          if (o.id !== orderId) return o;
-          const updated = { ...o, phase: nextPhase.phase, action: nextPhase.action };
-          if (selectedOrder?.id === orderId) setSelectedOrder(updated);
-          return updated;
-        }));
+        const phaseUpdate = { phase: nextPhase.phase, action: nextPhase.action };
+        setOrders(prev => prev.map(o => o.id !== orderId ? o : { ...o, ...phaseUpdate }));
+        if (selectedOrder?.id === orderId) setSelectedOrder((prev: any) => ({ ...prev, ...phaseUpdate }));
       }
     } catch(e) {
       console.error(e);
@@ -235,35 +474,36 @@ export const Bookings = () => {
   };
 
   const [orderItems, setOrderItems] = useState([
-    { id: Date.now(), product: 'Green Net 110GSM', qty: 1 }
+    { id: Date.now(), product: '', qty: 1, rate: 0 }
   ]);
 
   const handleConfirmBooking = async () => {
-    const customerName = selectedCustomer === 'planet_agro' ? 'Planet Agro' : 
-                        selectedCustomer === 'abc_farm' ? 'ABC Farm' : 'New Client';
+    const cust = customersList.find(c => c.id === selectedCustomer);
+    const customerName = cust ? cust.name : 'Unknown Client';
     
     const totalQty = orderItems.reduce((sum, item) => sum + item.qty, 0);
     
     const payload = {
-      customerId: "11111111-1111-1111-1111-111111111111", // MOCK UUID
+      customerId: selectedCustomer,
       notes: "Order placed from UI",
       items: orderItems.map(item => ({
-        productVariantId: "22222222-2222-2222-2222-222222222222", // MOCK UUID
+        productVariantId: item.product,
         noOfBundles: item.qty,
-        unitRate: 210,
-        lineTotal: item.qty * 210
+        unitRate: item.rate,
+        lineTotal: item.qty * item.rate
       }))
     };
 
     try {
       const response = await createOrderAPI(payload);
-      
+
+      const orderTotal = orderItems.reduce((sum, item) => sum + item.qty * item.rate, 0);
       const newOrder = {
         id: response.id,
         customer: customerName,
         items: totalQty,
         totalWeight: `Pending`,
-        amount: `₹${(response.totalAmount || totalQty * 210).toLocaleString()}`,
+        amount: `₹${(response.totalAmount || orderTotal).toLocaleString()}`,
         phase: 'Order Created',
         action: 'Add Weights',
         date: new Date().toISOString().split('T')[0],
@@ -271,7 +511,7 @@ export const Bookings = () => {
           name: item.product,
           qty: item.qty,
           weights: Array(item.qty).fill(''),
-          price: 210
+          price: item.rate
         }))
       };
 
@@ -279,7 +519,7 @@ export const Bookings = () => {
       setTab('ongoing');
       setWizardStep(1);
       setSelectedCustomer('');
-      setOrderItems([{ id: Date.now(), product: 'Green Net 110GSM', qty: 1 }]);
+      setOrderItems([{ id: Date.now(), product: '', qty: 1, rate: 0 }]);
     } catch (e) {
       console.error(e);
       alert('Failed to create order');
@@ -291,9 +531,9 @@ export const Bookings = () => {
       return `• ${item.product}: ${item.qty} Bundles`;
     }).join('\n');
 
-    const totalAmt = orderItems.reduce((sum, item) => sum + (item.qty * 2500), 0);
-    const customerName = selectedCustomer === 'planet_agro' ? 'Planet Agro' : 
-                        selectedCustomer === 'abc_farm' ? 'ABC Farm' : 'New Client';
+    const totalAmt = orderItems.reduce((sum, item) => sum + (item.qty * item.rate), 0);
+    const cust = customersList.find(c => c.id === selectedCustomer);
+    const customerName = cust ? cust.name : 'New Client';
 
     const message = `*KSP Enquiry - Quotation Template*\n` +
       `Customer: ${customerName}\n\n` +
@@ -344,18 +584,27 @@ export const Bookings = () => {
               </div>
             </div>
             
-            {order.action && (
-              <>
-                <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 0 }} />
-                <Button 
-                  variant="primary" 
+            <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 0 }} />
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              {order.action && (
+                <Button
+                  variant="primary"
                   onClick={(e) => { e.stopPropagation(); handleButtonClick(order.id); }}
-                  style={{ width: '100%', fontSize: '0.8rem', padding: 'var(--space-2)' }}
+                  style={{ flex: 1, fontSize: '0.8rem', padding: 'var(--space-2)' }}
                 >
                   Action: {order.action}
                 </Button>
-              </>
-            )}
+              )}
+              {canDelete && (
+                <Button
+                  variant="outline"
+                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteOrderId(order.id); }}
+                  style={{ fontSize: '0.8rem', padding: 'var(--space-2) var(--space-3)', color: '#fa5252', borderColor: '#fa5252' }}
+                >
+                  Delete
+                </Button>
+              )}
+            </div>
           </Card>
         )) : (
           <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
@@ -434,22 +683,70 @@ export const Bookings = () => {
               <span>Item Description</span>
               <span>Total</span>
             </div>
-            {selectedOrder.itemsList?.map((item: any, idx: number) => (
-              <div key={idx} style={{ padding: 'var(--space-4)', borderBottom: idx < selectedOrder.itemsList.length - 1 ? '1px solid var(--color-border)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 500, fontSize: '0.9rem' }}>{item.name}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                    {item.qty} Bundles {item.weight && `(${item.weight} kg/ea)`} × ₹{item.price}
+            {selectedOrder.itemsList?.map((item: any, idx: number) => {
+              const isEditable = selectedOrder.phase !== 'Dispatched' && selectedOrder.phase !== 'Completed';
+              const unitPrice = itemPrices[idx] ?? item.price ?? 0;
+              const qty = itemQtys[idx] ?? item.qty ?? 1;
+              return (
+                <div key={idx} style={{ padding: 'var(--space-4)', borderBottom: idx < selectedOrder.itemsList.length - 1 ? '1px solid var(--color-border)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, fontSize: '0.9rem' }}>{item.name}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                      {isEditable ? (
+                        <Input
+                          type="number"
+                          value={qty}
+                          onChange={(e) => setItemQtys(prev => {
+                            const next = [...prev];
+                            next[idx] = parseInt(e.target.value) || 1;
+                            return next;
+                          })}
+                          style={{ width: '60px', height: '28px', padding: '2px 6px', fontSize: '0.8rem', display: 'inline-block' }}
+                        />
+                      ) : (
+                        <span>{qty}</span>
+                      )}
+                      <span>Bundles ×</span>
+                      {isEditable ? (
+                        <Input
+                          type="number"
+                          value={unitPrice}
+                          onChange={(e) => setItemPrices(prev => {
+                            const next = [...prev];
+                            next[idx] = parseFloat(e.target.value) || 0;
+                            return next;
+                          })}
+                          style={{ width: '80px', height: '28px', padding: '2px 6px', fontSize: '0.8rem', display: 'inline-block' }}
+                        />
+                      ) : (
+                        <span>₹{unitPrice}</span>
+                      )}
+                    </div>
                   </div>
+                  <div style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>₹{(qty * unitPrice).toLocaleString()}</div>
                 </div>
-                <div style={{ fontWeight: 600 }}>₹{item.qty * item.price}</div>
-              </div>
-            ))}
+              );
+            })}
             <div style={{ padding: 'var(--space-4)', background: 'var(--color-surface-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid var(--color-border)' }}>
               <span style={{ fontWeight: 600 }}>Grand Total</span>
-              <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-primary)' }}>{selectedOrder.amount}</span>
+              <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-primary)' }}>
+                {selectedOrder.phase !== 'Dispatched' && selectedOrder.phase !== 'Completed'
+                  ? `₹${selectedOrder.itemsList.reduce((sum: number, item: any, idx: number) => sum + (itemQtys[idx] ?? item.qty) * (itemPrices[idx] ?? item.price ?? 0), 0).toLocaleString()}`
+                  : selectedOrder.amount
+                }
+              </span>
             </div>
           </Card>
+          {selectedOrder.phase !== 'Dispatched' && selectedOrder.phase !== 'Completed' && (
+            <Button
+              variant="primary"
+              style={{ width: '100%', marginTop: 'var(--space-3)', fontSize: '0.85rem' }}
+              onClick={handleSavePrices}
+              disabled={savingPrices}
+            >
+              {savingPrices ? 'Saving...' : 'Save Prices'}
+            </Button>
+          )}
         </div>
 
         <div>
@@ -462,23 +759,25 @@ export const Bookings = () => {
               const isCompleted = i < currentIdx;
               const isCurrent = i === currentIdx;
               const isPending = i > currentIdx;
+              const phaseAttachmentTypes = PHASE_ATTACHMENT_TYPES[p.phase] || [];
+              const phaseAttachments = (selectedOrder.attachments || []).filter((a: any) => phaseAttachmentTypes.includes(a.type));
 
               return (
                 <div key={i} style={{ display: 'flex', gap: 'var(--space-4)', position: 'relative' }}>
                   {/* Vertical Line */}
                   {i < PHASES.length - 1 && (
-                    <div style={{ 
-                      position: 'absolute', left: '7px', top: '24px', bottom: '-24px', 
-                      width: '2px', 
+                    <div style={{
+                      position: 'absolute', left: '7px', top: '24px', bottom: '-24px',
+                      width: '2px',
                       background: isCompleted ? 'var(--color-primary)' : 'var(--color-border)',
                       zIndex: 0
                     }}></div>
                   )}
 
                   {/* Node */}
-                  <div style={{ 
-                    width: '16px', height: '16px', borderRadius: '50%', 
-                    background: isPending ? 'white' : 'var(--color-primary)', 
+                  <div style={{
+                    width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                    background: isPending ? 'white' : 'var(--color-primary)',
                     border: isPending ? '2px solid var(--color-border)' : 'none',
                     marginTop: '4px', zIndex: 1,
                     boxShadow: isCurrent ? '0 0 0 4px var(--color-primary-light)' : 'none'
@@ -488,17 +787,49 @@ export const Bookings = () => {
                     )}
                   </div>
 
-                  <div style={{ opacity: isPending ? 0.5 : 1 }}>
-                    <div style={{ 
-                      fontWeight: 600, 
-                      fontSize: '0.95rem', 
-                      color: isCurrent ? 'var(--color-primary)' : 'inherit' 
-                    }}>
+                  <div style={{ opacity: isPending ? 0.5 : 1, flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: isCurrent ? 'var(--color-primary)' : 'inherit' }}>
                       {p.phase}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                      {isCompleted ? 'Completed on May 05' : isCurrent ? 'Waiting for action...' : 'Pending'}
+                      {isCompleted ? 'Completed' : isCurrent ? 'Waiting for action...' : 'Pending'}
                     </div>
+
+                    {/* Inline attachments for this step */}
+                    {phaseAttachments.length > 0 && (
+                      <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                        {phaseAttachments.map((att: any) => {
+                          const isImage = att.fileName?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                          return isImage ? (
+                            <a key={att.id} href={att.fileUrl} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={att.fileUrl}
+                                alt={att.fileName}
+                                style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}
+                              />
+                            </a>
+                          ) : (
+                            <a key={att.id} href={att.fileUrl} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--color-primary)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', textDecoration: 'none' }}>
+                              <FileText size={14} /> {att.fileName}
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Add more photos button for completed steps that have attachments */}
+                    {(isCompleted || isCurrent) && phaseAttachmentTypes.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setAddPhotoContext({ orderId: selectedOrder.id, attachmentType: phaseAttachmentTypes[0] });
+                          extraFileInputRef.current?.click();
+                        }}
+                        style={{ marginTop: 'var(--space-2)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--color-primary)', padding: 0 }}
+                      >
+                        + Add Photo
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -512,11 +843,17 @@ export const Bookings = () => {
               Continue: {selectedOrder.action}
             </Button>
           )}
-          
-          {currentIdx > 0 && (
+
+          {UNDO_MAP[selectedOrder.phase] && (
             <Button variant="outline" onClick={() => handleUndo(selectedOrder.id)} style={{ color: 'var(--color-error)', borderColor: 'var(--color-error)' }}>
               <RotateCcw size={16} style={{ marginRight: '8px' }} />
               Undo Last Step
+            </Button>
+          )}
+
+          {canDelete && (
+            <Button variant="outline" onClick={() => setConfirmDeleteOrderId(selectedOrder.id)} style={{ color: '#fa5252', borderColor: '#fa5252' }}>
+              Delete Order
             </Button>
           )}
         </div>
@@ -528,15 +865,22 @@ export const Bookings = () => {
     setOrderItems(prev => prev.map(item => {
       if (item.id !== id) return item;
       if (field === 'qty') {
-        const newQty = parseInt(value) || 0;
-        return { ...item, qty: newQty };
+        return { ...item, qty: parseInt(value) || 0 };
+      }
+      if (field === 'product') {
+        let rate = 0;
+        for (const p of productsList) {
+          const variant = p.variants?.find((v: any) => v.id === value);
+          if (variant) { rate = variant.rateOverride || 0; break; }
+        }
+        return { ...item, product: value, rate };
       }
       return { ...item, [field]: value };
     }));
   };
 
   const addItem = () => {
-    setOrderItems(prev => [...prev, { id: Date.now(), product: 'Green Net 110GSM', qty: 1 }]);
+    setOrderItems(prev => [...prev, { id: Date.now(), product: '', qty: 1, rate: 0 }]);
   };
 
   // Renders the Create Order Wizard
@@ -554,8 +898,9 @@ export const Bookings = () => {
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Select Customer</label>
               <select className="input-field" value={selectedCustomer} onChange={(e) => setSelectedCustomer(e.target.value)}>
                 <option value="" disabled>Choose a customer...</option>
-                <option value="planet_agro">Planet Agro</option>
-                <option value="abc_farm">ABC Farm</option>
+                {customersList.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
                 <option value="new">+ Add New Customer...</option>
               </select>
             </div>
@@ -563,16 +908,34 @@ export const Bookings = () => {
             {selectedCustomer === 'new' && (
               <Card style={{ background: 'var(--color-surface-muted)', border: 'none', padding: 'var(--space-4)' }}>
                 <h4 style={{ margin: '0 0 var(--space-4) 0' }}>New Customer Details</h4>
-                <CustomerForm 
-                  isCompact 
-                  onSubmit={() => setSelectedCustomer('')} 
+                <CustomerForm
+                  isCompact
+                  onSubmit={async (data: any) => {
+                    try {
+                      const res = await fetch(`${API_BASE_URL}/api/v1/customers`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify(data),
+                      });
+                      if (res.ok) {
+                        const created = await res.json();
+                        setCustomersList(prev => [...prev, created]);
+                        setSelectedCustomer(created.id);
+                      } else {
+                        alert('Failed to create customer');
+                      }
+                    } catch (e) {
+                      console.error(e);
+                      alert('Failed to create customer');
+                    }
+                  }}
                   onCancel={() => setSelectedCustomer('')}
                   submitLabel="Add & Select"
                 />
               </Card>
             )}
 
-            <Button variant="primary" onClick={() => setWizardStep(2)} disabled={!selectedCustomer}>
+            <Button variant="primary" onClick={() => setWizardStep(2)} disabled={!selectedCustomer || selectedCustomer === 'new'}>
               Next: Select Items
             </Button>
           </div>
@@ -590,9 +953,12 @@ export const Bookings = () => {
                       value={item.product}
                       onChange={(e) => updateItem(item.id, 'product', e.target.value)}
                     >
-                      <option>Green Net 110GSM</option>
-                      <option>Tarpaulin 90GSM</option>
-                      <option>Mulch Film 25M</option>
+                      <option value="">Select a product...</option>
+                      {productsList.map(p => 
+                        p.variants?.map((v: any) => (
+                          <option key={v.id} value={v.id}>{p.name} - {v.size}</option>
+                        ))
+                      )}
                     </select>
                   </div>
                   <div>
@@ -628,10 +994,10 @@ export const Bookings = () => {
                     <span>
                       <strong>{item.product}</strong>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        {item.qty} Bundles
+                        {item.qty} Bundles × ₹{item.rate.toLocaleString()}
                       </div>
                     </span>
-                    <span style={{ fontWeight: 600 }}>₹{(item.qty * 2500).toLocaleString()}</span>
+                    <span style={{ fontWeight: 600 }}>₹{(item.qty * item.rate).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
@@ -639,7 +1005,7 @@ export const Bookings = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.1rem' }}>
                 <span>Total Amount</span>
                 <span style={{ color: 'var(--color-primary)' }}>
-                  ₹{orderItems.reduce((sum, item) => sum + (item.qty * 2500), 0).toLocaleString()}
+                  ₹{orderItems.reduce((sum, item) => sum + (item.qty * item.rate), 0).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -666,21 +1032,25 @@ export const Bookings = () => {
   return (
     <div className="page-content">
       {/* Hidden inputs for different capture modes */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        style={{ display: 'none' }} 
-        accept="image/*,application/pdf"
-        onChange={handleFileChange}
-      />
-      <input 
-        type="file" 
-        ref={cameraInputRef} 
-        style={{ display: 'none' }} 
-        accept="image/*"
-        capture="environment"
-        onChange={handleFileChange}
-      />
+      <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="image/*,application/pdf" multiple onChange={handleFileChange} />
+      <input type="file" ref={cameraInputRef} style={{ display: 'none' }} accept="image/*" capture="environment" onChange={handleFileChange} />
+      <input type="file" ref={extraFileInputRef} style={{ display: 'none' }} accept="image/*,application/pdf" multiple onChange={handleExtraFileChange} />
+
+      {/* Delete Order Confirmation */}
+      {confirmDeleteOrderId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
+          <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: '320px', width: '100%' }}>
+            <h3 style={{ margin: '0 0 var(--space-3) 0', fontSize: '1rem' }}>Delete Order?</h3>
+            <p style={{ margin: '0 0 var(--space-5) 0', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+              This will permanently delete order <strong>#{confirmDeleteOrderId}</strong> and all its data. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <Button variant="outline" style={{ flex: 1 }} onClick={() => setConfirmDeleteOrderId(null)}>Cancel</Button>
+              <Button variant="primary" style={{ flex: 1, background: '#fa5252', borderColor: '#fa5252' }} onClick={handleDeleteOrder}>Delete</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Customer Details Modal */}
       {showCustomerModal && (
@@ -817,15 +1187,23 @@ export const Bookings = () => {
         }
       `}</style>
 
-      <SegmentedControl 
-        options={[
-          { label: 'Ongoing', value: 'ongoing' },
-          { label: 'Completed', value: 'completed' },
-          { label: '+ New', value: 'new' }
-        ]} 
-        value={tab} 
-        onChange={(val) => { setTab(val); setWizardStep(1); }} 
-      />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+        <SegmentedControl
+          options={[
+            { label: 'Ongoing', value: 'ongoing' },
+            { label: 'Completed', value: 'completed' },
+          ]}
+          value={tab === 'new' ? 'ongoing' : tab}
+          onChange={(val) => { setTab(val); setView('list'); setWizardStep(1); }}
+        />
+        <Button
+          variant="primary"
+          style={{ padding: '6px 16px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+          onClick={() => { setTab('new'); setView('list'); setWizardStep(1); }}
+        >
+          + New Order
+        </Button>
+      </div>
 
       <div style={{ marginTop: 'var(--space-6)' }}>
         {view === 'details' ? renderDetails() : (tab === 'new' ? renderWizard() : renderList())}

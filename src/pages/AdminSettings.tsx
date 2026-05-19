@@ -5,29 +5,73 @@ import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
+import { config } from '../config';
 
 export const AdminSettings = () => {
   const [tab, setTab] = useState('catalog');
   const [showAddProduct, setShowAddProduct] = useState(false);
   const { token } = useAuth();
+  const { canDelete, canManageCatalog } = usePermissions();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
-  // Mock State for Products
-  const [products, setProducts] = useState([
-    { id: 1, name: 'Green Net (Planet Agro)', active: true, gsmMin: 105, gsmMax: 115, variants: [{ size: '110 GSM • 30x60', price: 2500 }, { size: '90 GSM • 40x40', price: 3200 }] },
-    { id: 2, name: 'Tarpaulin', active: true, gsmMin: 115, gsmMax: 125, variants: [{ size: '120 GSM • 50x50', price: 4500 }] },
-    { id: 3, name: 'Mulch Film', active: false, gsmMin: 23, gsmMax: 27, variants: [{ size: '25 Micron • 400m', price: 1800 }] },
-  ]);
+  // Live State for Products
+  const [products, setProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
 
   // Live State for Users
   const [users, setUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Live State for Statuses
+  const [orderStatuses, setOrderStatuses] = useState<any[]>([]);
+
   useEffect(() => {
     if (tab === 'users') {
       fetchUsers();
+    } else if (tab === 'catalog') {
+      fetchProducts();
+    } else if (tab === 'masters') {
+      fetchStatuses();
     }
   }, [tab, searchQuery]);
+
+  const fetchStatuses = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/statuses`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setOrderStatuses(await res.json());
+    } catch (e) {
+      console.error('Failed to fetch statuses', e);
+    }
+  };
+
+  const fetchProducts = async () => {
+    setLoadingProducts(true);
+    try {
+      if (config.USE_MOCK_API) {
+        setProducts([
+          { id: 1, name: 'Green Net (Planet Agro)', isActive: true, variants: [{ size: '110 GSM • 30x60', rateOverride: 2500 }, { size: '90 GSM • 40x40', rateOverride: 3200 }] },
+          { id: 2, name: 'Tarpaulin', isActive: true, variants: [{ size: '120 GSM • 50x50', rateOverride: 4500 }] },
+        ]);
+        setLoadingProducts(false);
+        return;
+      }
+      
+      const res = await fetch(`${API_BASE_URL}/api/v1/products`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProducts(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch products', e);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -47,8 +91,102 @@ export const AdminSettings = () => {
     }
   };
 
-  const toggleProductStatus = (id: number) => {
-    setProducts(products.map(p => p.id === id ? { ...p, active: !p.active } : p));
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductDesc, setNewProductDesc] = useState('');
+
+  const [addingVariantForProductId, setAddingVariantForProductId] = useState<string | null>(null);
+  const [newVariantSize, setNewVariantSize] = useState('');
+  const [newVariantRate, setNewVariantRate] = useState('');
+  const [newVariantWeight, setNewVariantWeight] = useState('');
+
+  const [confirmDelete, setConfirmDelete] = useState<{ type: 'variant'; productId: string; variantId: string; label: string } | null>(null);
+  const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<{ id: string; name: string } | null>(null);
+
+  const handleDeleteUser = async () => {
+    if (!confirmDeleteUserId) return;
+    const { id } = confirmDeleteUserId;
+    setConfirmDeleteUserId(null);
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      setUsers(prev => prev.filter(u => u.id !== id));
+    } catch (e) {
+      console.error('Failed to delete user', e);
+    }
+  };
+
+  const handleDeleteVariant = async () => {
+    if (!confirmDelete) return;
+    const { productId, variantId } = confirmDelete;
+    setConfirmDelete(null);
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/products/${productId}/variants/${variantId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      fetchProducts();
+    } catch (e) {
+      console.error('Failed to delete variant', e);
+    }
+  };
+
+  const handleAddVariant = async (productId: string) => {
+    if (!newVariantSize.trim() || !newVariantRate.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/products/${productId}/variants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          size: newVariantSize,
+          rateOverride: parseFloat(newVariantRate),
+          weightPerBundleKg: newVariantWeight ? parseFloat(newVariantWeight) : null,
+        })
+      });
+      if (res.ok) {
+        setAddingVariantForProductId(null);
+        setNewVariantSize('');
+        setNewVariantRate('');
+        setNewVariantWeight('');
+        fetchProducts();
+      }
+    } catch (e) {
+      console.error('Failed to add variant', e);
+    }
+  };
+
+  const toggleProductStatus = async (id: string | number) => {
+    setProducts(products.map(p => p.id === id ? { ...p, isActive: !p.isActive } : p));
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/products/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+    } catch (e) {
+      fetchProducts();
+    }
+  };
+
+  const handleAddProduct = async () => {
+    if (!newProductName.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: newProductName, description: newProductDesc, variants: [] })
+      });
+      if (res.ok) {
+        setNewProductName('');
+        setNewProductDesc('');
+        setShowAddProduct(false);
+        fetchProducts();
+      } else {
+        console.error('Failed to create product');
+      }
+    } catch (e) {
+      console.error('Error creating product', e);
+    }
   };
 
   const updateStatus = async (id: string, newStatus: string) => {
@@ -151,6 +289,9 @@ export const AdminSettings = () => {
                   {(user.status === 'SUSPENDED' || user.status === 'Disabled') && (
                     <Button variant="primary" style={{ padding: '2px 8px', fontSize: '0.7rem' }} onClick={() => updateStatus(user.id, 'ACTIVE')}>Enable</Button>
                   )}
+                  {canDelete && (
+                    <Button variant="outline" style={{ padding: '2px 8px', fontSize: '0.7rem', color: '#fa5252', borderColor: '#fa5252' }} onClick={() => setConfirmDeleteUserId({ id: user.id, name: user.name || user.phoneNumber })}>Delete</Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -163,6 +304,36 @@ export const AdminSettings = () => {
 
   return (
     <div className="page-content">
+      {confirmDelete && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
+          <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: '320px', width: '100%' }}>
+            <h3 style={{ margin: '0 0 var(--space-3) 0', fontSize: '1rem' }}>Remove Pricing Record?</h3>
+            <p style={{ margin: '0 0 var(--space-5) 0', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+              Are you sure you want to remove <strong>{confirmDelete.label}</strong>? This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <Button variant="outline" style={{ flex: 1 }} onClick={() => setConfirmDelete(null)}>Cancel</Button>
+              <Button variant="primary" style={{ flex: 1, background: '#fa5252', borderColor: '#fa5252' }} onClick={handleDeleteVariant}>Remove</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteUserId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
+          <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: '320px', width: '100%' }}>
+            <h3 style={{ margin: '0 0 var(--space-3) 0', fontSize: '1rem' }}>Delete User?</h3>
+            <p style={{ margin: '0 0 var(--space-5) 0', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+              Are you sure you want to permanently delete <strong>{confirmDeleteUserId.name}</strong>? This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <Button variant="outline" style={{ flex: 1 }} onClick={() => setConfirmDeleteUserId(null)}>Cancel</Button>
+              <Button variant="primary" style={{ flex: 1, background: '#fa5252', borderColor: '#fa5252' }} onClick={handleDeleteUser}>Delete</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <h2 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1.25rem' }}>
         Superadmin Panel
       </h2>
@@ -183,63 +354,100 @@ export const AdminSettings = () => {
             {!showAddProduct ? (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>Products & Variants</h3>
-                <Button variant="primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => setShowAddProduct(true)}>
-                  + Add Product
-                </Button>
+                {canManageCatalog && (
+                  <Button variant="primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => setShowAddProduct(true)}>
+                    + Add Product
+                  </Button>
+                )}
               </div>
             ) : (
               <Card style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-primary)' }}>
                 <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>New Product</h3>
-                <Input type="text" placeholder="Product Name (e.g. Shade Net)" style={{ marginBottom: 'var(--space-3)' }} />
-                <div style={{ marginBottom: 'var(--space-4)' }}>
-                  <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>GSM Tolerance (± Range)</label>
-                  <div className="grid-layout">
-                    <Input type="number" placeholder="Min" />
-                    <Input type="number" placeholder="Max" />
-                  </div>
-                </div>
+                <Input 
+                  type="text" 
+                  placeholder="Product Name (e.g. Shade Net)" 
+                  style={{ marginBottom: 'var(--space-3)' }}
+                  value={newProductName}
+                  onChange={(e) => setNewProductName(e.target.value)}
+                />
+                <Input 
+                  type="text" 
+                  placeholder="Description (Optional)" 
+                  style={{ marginBottom: 'var(--space-4)' }}
+                  value={newProductDesc}
+                  onChange={(e) => setNewProductDesc(e.target.value)}
+                />
                 <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
                   <Button variant="outline" style={{ flex: 1 }} onClick={() => setShowAddProduct(false)}>Cancel</Button>
-                  <Button variant="primary" style={{ flex: 1 }} onClick={() => setShowAddProduct(false)}>Save Product</Button>
+                  <Button variant="primary" style={{ flex: 1 }} onClick={handleAddProduct}>Save Product</Button>
                 </div>
               </Card>
             )}
 
             {products.map((product) => (
-              <Card key={product.id} style={{ padding: 'var(--space-4)', opacity: product.active ? 1 : 0.6 }}>
+              <Card key={product.id} style={{ padding: 'var(--space-4)', opacity: product.isActive ? 1 : 0.6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                       <strong style={{ fontSize: '1.1rem' }}>{product.name}</strong>
-                      {!product.active && <Badge status="completed">Disabled</Badge>}
+                      {!product.isActive && <Badge status="completed">Disabled</Badge>}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>GSM Range:</span>
-                      <Input type="number" defaultValue={product.gsmMin} style={{ width: '50px', padding: '2px 4px', fontSize: '0.8rem' }} />
-                      <span>-</span>
-                      <Input type="number" defaultValue={product.gsmMax} style={{ width: '50px', padding: '2px 4px', fontSize: '0.8rem' }} />
-                    </div>
+                    {product.description && (
+                      <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                        {product.description}
+                      </div>
+                    )}
                   </div>
-                  <Button
-                    variant={product.active ? "outline" : "primary"}
-                    style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                    onClick={() => toggleProductStatus(product.id)}
-                  >
-                    {product.active ? 'Disable' : 'Enable'}
-                  </Button>
+                  {canManageCatalog && (
+                    <Button
+                      variant={product.isActive ? "outline" : "primary"}
+                      style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                      onClick={() => toggleProductStatus(product.id)}
+                    >
+                      {product.isActive ? 'Disable' : 'Enable'}
+                    </Button>
+                  )}
                 </div>
-                {product.variants.map((v, i) => (
-                  <div key={i} style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-2)', display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.85rem' }}>{v.size}</span>
-                    <strong style={{ fontSize: '0.85rem' }}>₹{v.price}</strong>
+                {product.variants && product.variants.map((v: any, i: number) => (
+                  <div key={v.id || i} style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem' }}>{v.size} {v.weightPerBundleKg ? `• ${v.weightPerBundleKg}kg` : ''}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <strong style={{ fontSize: '0.85rem' }}>₹{v.rateOverride}</strong>
+                      {canDelete && v.id && (
+                        <button
+                          onClick={() => setConfirmDelete({ type: 'variant', productId: product.id, variantId: v.id, label: v.size })}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '0.75rem', padding: '2px 4px', lineHeight: 1 }}
+                          title="Remove pricing record"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
-                <Button 
-                  variant="outline" 
-                  style={{ width: '100%', borderStyle: 'dashed', fontSize: '0.8rem', padding: 'var(--space-1)' }}
-                >
-                  + Add Price Record
-                </Button>
+                {canManageCatalog && (
+                  addingVariantForProductId === product.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)', padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)' }}>
+                      <Input placeholder="Size (e.g. 110GSM • 30x60)" value={newVariantSize} onChange={e => setNewVariantSize(e.target.value)} />
+                      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <Input placeholder="Rate (₹)" type="number" value={newVariantRate} onChange={e => setNewVariantRate(e.target.value)} style={{ flex: 1 }} />
+                        <Input placeholder="Wt/bundle (kg)" type="number" value={newVariantWeight} onChange={e => setNewVariantWeight(e.target.value)} style={{ flex: 1 }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => setAddingVariantForProductId(null)}>Cancel</Button>
+                        <Button variant="primary" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => handleAddVariant(product.id)}>Save</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      style={{ width: '100%', borderStyle: 'dashed', fontSize: '0.8rem', padding: 'var(--space-1)' }}
+                      onClick={() => { setAddingVariantForProductId(product.id); setNewVariantSize(''); setNewVariantRate(''); setNewVariantWeight(''); }}
+                    >
+                      + Add Price Record
+                    </Button>
+                  )
+                )}
               </Card>
             ))}
           </div>
@@ -250,14 +458,22 @@ export const AdminSettings = () => {
         {tab === 'masters' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <Card>
-              <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>System Master Statuses</h3>
-              <ul style={{ margin: 0, paddingLeft: 'var(--space-5)', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-                <li>Quotation Generated</li>
-                <li>Bill Uploaded</li>
-                <li>Dispatched</li>
-                <li>LR Uploaded</li>
-                <li>Completed</li>
-              </ul>
+              <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>Order Statuses</h3>
+              {orderStatuses.length === 0 ? (
+                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>Loading...</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  {orderStatuses.map((s: any) => (
+                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)' }}>
+                      <div>
+                        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{s.name}</span>
+                        {s.description && <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginLeft: 'var(--space-2)' }}>— {s.description}</span>}
+                      </div>
+                      <Badge status="completed" style={{ fontSize: '0.7rem' }}>#{s.sequence}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           </div>
         )}

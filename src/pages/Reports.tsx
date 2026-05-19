@@ -1,13 +1,69 @@
-import { 
-  Users, 
+import { useState, useEffect } from 'react';
+import {
+  Users,
   Package,
   ArrowUpRight
 } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Badge } from '../design-system/components/ui/Badge';
 import { Button } from '../design-system/components/ui/Button';
+import { useAuth } from '../contexts/AuthContext';
 
 export const Reports = () => {
+  const { token } = useAuth();
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+  const [stats, setStats] = useState<{ totalCustomers: number; todayOrdersCount: number } | null>(null);
+  const [stockRows, setStockRows] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/v1/dashboard/stats`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setStats(data); })
+      .catch(() => {});
+
+    Promise.all([
+      fetch(`${API_BASE_URL}/api/v1/stock-in`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/orders`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/products`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+    ]).then(([stockEntries, orders, products]) => {
+      const stockByVariant: Record<string, number> = {};
+      stockEntries.forEach((s: any) => {
+        const key = s.productVariantId;
+        stockByVariant[key] = (stockByVariant[key] || 0) + (s.noOfBundles || 0);
+      });
+
+      const demandByVariant: Record<string, number> = {};
+      orders
+        .filter((o: any) => o.statusId !== 'COMPLETED')
+        .forEach((o: any) => {
+          (o.items || []).forEach((i: any) => {
+            const key = i.productVariantId;
+            demandByVariant[key] = (demandByVariant[key] || 0) + (i.noOfBundles || 0);
+          });
+        });
+
+      const rows: any[] = [];
+      products.forEach((p: any) => {
+        (p.variants || []).forEach((v: any) => {
+          const stock = stockByVariant[v.id] || 0;
+          const demand = demandByVariant[v.id] || 0;
+          if (stock > 0 || demand > 0) {
+            rows.push({
+              item: `${p.name} ${v.size || ''}`.trim(),
+              stock,
+              orders: demand,
+              unit: 'Bundles',
+              status: demand > stock ? 'Shortage' : stock > demand * 1.5 ? 'Excess' : 'Sufficient',
+            });
+          }
+        });
+      });
+      setStockRows(rows);
+    }).catch(() => {});
+  }, [token]);
 
   return (
     <div className="page-content" style={{ animation: 'fadeIn 0.5s ease-out' }}>
@@ -24,20 +80,20 @@ export const Reports = () => {
             <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Total Customers</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-            <h2 style={{ margin: 0, fontSize: '1.5rem' }}>142</h2>
+            <h2 style={{ margin: 0, fontSize: '1.5rem' }}>{stats?.totalCustomers ?? '—'}</h2>
             <span style={{ color: 'var(--color-success)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-              <ArrowUpRight size={12} /> +12%
+              <ArrowUpRight size={12} />
             </span>
           </div>
         </Card>
         <Card style={{ padding: 'var(--space-4)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
             <Package size={16} />
-            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Order Velocity</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Today's Orders</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-            <h2 style={{ margin: 0, fontSize: '1.5rem' }}>18.4</h2>
-            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', marginBottom: '4px' }}>orders/day</span>
+            <h2 style={{ margin: 0, fontSize: '1.5rem' }}>{stats?.todayOrdersCount ?? '—'}</h2>
+            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', marginBottom: '4px' }}>orders</span>
           </div>
         </Card>
       </div>
@@ -49,12 +105,13 @@ export const Reports = () => {
           Product Stock Sufficiency
         </h3>
         
+        {stockRows.length === 0 && (
+          <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+            No stock data available.
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {[
-            { item: 'Green Net 110GSM', stock: 120, orders: 85, unit: 'Bundles', status: 'Sufficient' },
-            { item: 'Tarpaulin 90GSM', stock: 45, orders: 60, unit: 'Bundles', status: 'Shortage' },
-            { item: 'Mulch Film 25M', stock: 200, orders: 120, unit: 'Rolls', status: 'Excess' },
-          ].map((row, i) => {
+          {stockRows.map((row, i) => {
             const ratio = (row.orders / row.stock) * 100;
             const isShortage = row.orders > row.stock;
 
