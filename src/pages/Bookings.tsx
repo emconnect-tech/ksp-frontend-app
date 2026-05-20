@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, RotateCcw, FileText, Calendar, User, Package, Share2 } from 'lucide-react';
+import { ArrowLeft, FileText, Share2 } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
@@ -157,38 +157,6 @@ export const Bookings = () => {
     }
   };
 
-  // Maps current phase → { db status to revert to, phase to show after undo }
-  // Only phases with a distinct DB status transition are undoable.
-  const UNDO_MAP: Record<string, { statusName: string; phase: string; action: string | null }> = {
-    'Bill Uploaded':        { statusName: 'QUOTATION',  phase: 'Quotation Generated', action: 'Upload Bill' },
-    'Partially Dispatched': { statusName: 'CONFIRMED',  phase: 'Bill Uploaded',        action: 'Dispatch (Full/Partial)' },
-    'Dispatched':           { statusName: 'CONFIRMED',  phase: 'Bill Uploaded',        action: 'Dispatch (Full/Partial)' },
-    'Completed':            { statusName: 'DISPATCHED', phase: 'Dispatched',           action: 'Upload LR Photo' },
-  };
-
-  const handleUndo = async (orderId: string) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-
-    const undoTarget = UNDO_MAP[order.phase];
-    if (!undoTarget) return; // phases sharing QUOTATION status have no meaningful DB undo
-
-    const statusId = statusMap[undoTarget.statusName];
-    if (!statusId) {
-      console.warn('Status ID not found for', undoTarget.statusName);
-      return;
-    }
-
-    try {
-      await updateOrderStatusAPI(orderId, statusId);
-      const phaseUpdate = { phase: undoTarget.phase, action: undoTarget.action };
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...phaseUpdate } : o));
-      if (selectedOrder?.id === orderId) setSelectedOrder((prev: any) => ({ ...prev, ...phaseUpdate }));
-    } catch (e) {
-      console.error('Failed to undo', e);
-      alert('Failed to undo last step');
-    }
-  };
 
   const [showAddWeightsModal, setShowAddWeightsModal] = useState(false);
   const [weightsFormData, setWeightsFormData] = useState<any[]>([]);
@@ -265,11 +233,16 @@ export const Bookings = () => {
   const [itemPrices, setItemPrices] = useState<number[]>([]);
   const [itemQtys, setItemQtys] = useState<number[]>([]);
   const [savingPrices, setSavingPrices] = useState(false);
+  const [selectedPhaseIdx, setSelectedPhaseIdx] = useState<number | null>(null);
+  const [showAddItemForm, setShowAddItemForm] = useState(false);
+  const [newItemVariantId, setNewItemVariantId] = useState('');
+  const [newItemQty, setNewItemQty] = useState(1);
 
   useEffect(() => {
     if (selectedOrder?.itemsList) {
       setItemPrices(selectedOrder.itemsList.map((i: any) => i.price || 0));
       setItemQtys(selectedOrder.itemsList.map((i: any) => i.qty || 1));
+      setSelectedPhaseIdx(null);
     }
   }, [selectedOrder?.id]);
 
@@ -279,19 +252,29 @@ export const Bookings = () => {
     try {
       const payload = {
         customerId: selectedOrder.customerId,
-        items: selectedOrder.itemsList.map((item: any, idx: number) => ({
-          productVariantId: item.variantId,
-          noOfBundles: itemQtys[idx] ?? item.qty,
-          unitRate: itemPrices[idx],
-          lineTotal: (itemQtys[idx] ?? item.qty) * itemPrices[idx]
-        }))
+        items: selectedOrder.itemsList.map((item: any, idx: number) => {
+          const w = Array.isArray(item.weights)
+            ? item.weights.reduce((s: number, v: any) => s + (parseFloat(v) || 0), 0)
+            : (item.weightKg || 0);
+          return {
+            productVariantId: item.variantId,
+            noOfBundles: item.qty,
+            unitRate: itemPrices[idx],
+            lineTotal: w * itemPrices[idx]
+          };
+        })
       };
       await updateOrderWeightsAPI(selectedOrder.id, payload);
-      const newTotal = selectedOrder.itemsList.reduce((sum: number, item: any, idx: number) => sum + (itemQtys[idx] ?? item.qty) * (itemPrices[idx] || 0), 0);
+      const newTotal = selectedOrder.itemsList.reduce((sum: number, item: any, idx: number) => {
+        const w = Array.isArray(item.weights)
+          ? item.weights.reduce((s: number, v: any) => s + (parseFloat(v) || 0), 0)
+          : (item.weightKg || 0);
+        return sum + w * (itemPrices[idx] || 0);
+      }, 0);
       const updated = {
         ...selectedOrder,
         amount: `₹${newTotal.toLocaleString()}`,
-        itemsList: selectedOrder.itemsList.map((item: any, idx: number) => ({ ...item, qty: itemQtys[idx] ?? item.qty, price: itemPrices[idx] }))
+        itemsList: selectedOrder.itemsList.map((item: any, idx: number) => ({ ...item, price: itemPrices[idx] }))
       };
       setSelectedOrder(updated);
       setOrders(prev => prev.map(o => o.id === selectedOrder.id ? updated : o));
@@ -300,6 +283,59 @@ export const Bookings = () => {
       alert('Failed to save prices');
     } finally {
       setSavingPrices(false);
+    }
+  };
+
+  const handleResendToCustomer = (phase: string) => {
+    if (!selectedOrder) return;
+    const base = `*KSP Order Update - #${selectedOrder.orderNumber || selectedOrder.id}*\nCustomer: ${selectedOrder.customer}\n\n`;
+    const messages: Record<string, string> = {
+      'Order Created':          `Your order has been created.\n\nItems: ${selectedOrder.items} Bundles\nDate: ${selectedOrder.date}`,
+      'Weights Added':          `Weights have been recorded for your order.\n\nTotal Weight: ${selectedOrder.totalWeight}`,
+      'Quotation Generated':    `Your quotation is ready.\n\nTotal: ${selectedOrder.amount}\n\n_Reply to confirm._`,
+      'Bill Uploaded':          `Your bill has been prepared.\n\nTotal: ${selectedOrder.amount}\n\n_Contact us for any queries._`,
+      'Partially Dispatched':   `Partial shipment has been dispatched.\n\nTotal: ${selectedOrder.amount}`,
+      'Dispatched':             `Your order has been fully dispatched.\n\nTotal: ${selectedOrder.amount}`,
+      'Completed':              `Your order is complete. Thank you!\n\nTotal: ${selectedOrder.amount}`,
+    };
+    const body = messages[phase] ?? `Order status: ${phase}`;
+    const message = base + body + '\n\n_KSP Portal_';
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+    if (navigator.clipboard) navigator.clipboard.writeText(message);
+  };
+
+  const handleAddItemToOrder = async () => {
+    if (!selectedOrder || !newItemVariantId) return;
+    let rate = 0;
+    let itemName = newItemVariantId;
+    for (const p of productsList) {
+      const variant = p.variants?.find((v: any) => v.id === newItemVariantId);
+      if (variant) { rate = variant.rateOverride || 0; itemName = `${p.name} - ${variant.size}`; break; }
+    }
+    const newItem = { variantId: newItemVariantId, name: itemName, qty: newItemQty, weights: Array(newItemQty).fill(''), price: rate };
+    const updatedItems = [...selectedOrder.itemsList, newItem];
+    const payload = {
+      customerId: selectedOrder.customerId,
+      items: updatedItems.map(i => ({
+        productVariantId: i.variantId,
+        noOfBundles: i.qty,
+        unitRate: i.price || 0,
+        lineTotal: 0
+      }))
+    };
+    try {
+      await updateOrderWeightsAPI(selectedOrder.id, payload);
+      const updated = { ...selectedOrder, items: updatedItems.length, itemsList: updatedItems };
+      setSelectedOrder(updated);
+      setOrders(prev => prev.map(o => o.id === selectedOrder.id ? updated : o));
+      setItemPrices(updatedItems.map(i => i.price || 0));
+      setItemQtys(updatedItems.map(i => i.qty || 1));
+      setShowAddItemForm(false);
+      setNewItemVariantId('');
+      setNewItemQty(1);
+    } catch (e) {
+      console.error('Failed to add product', e);
+      alert('Failed to add product');
     }
   };
 
@@ -618,244 +654,341 @@ export const Bookings = () => {
   const renderDetails = () => {
     if (!selectedOrder) return null;
     const currentIdx = PHASES.findIndex(p => p.phase === selectedOrder.phase);
+    const effectiveIdx = selectedPhaseIdx ?? currentIdx;
+
+    const PHASE_SHORT: Record<string, string> = {
+      'Order Created':       'Created',
+      'Weights Added':       'Weights',
+      'Quotation Generated': 'Quotation',
+      'Bill Uploaded':       'Bill',
+      'Partially Dispatched':'Partial',
+      'Dispatched':          'Dispatched',
+      'Completed':           'Complete',
+    };
+
+    const renderRightPanel = () => {
+      const phase = PHASES[effectiveIdx];
+      if (!phase) return null;
+
+      const isCurrent = effectiveIdx === currentIdx;
+      const isPast    = effectiveIdx < currentIdx;
+      const isFuture  = effectiveIdx > currentIdx;
+      const isEditable = !isFuture && selectedOrder.phase !== 'Dispatched' && selectedOrder.phase !== 'Completed';
+
+      const phaseAttachTypes = PHASE_ATTACHMENT_TYPES[phase.phase] || [];
+      const phaseAtts = (selectedOrder.attachments || []).filter((a: any) => phaseAttachTypes.includes(a.type));
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          {/* Status label */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <Badge status={isFuture ? 'upcoming' : isCurrent ? 'ongoing' : 'completed'}>
+              {isFuture ? 'Pending' : isCurrent ? 'Current' : 'Done'}
+            </Badge>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isCurrent ? 'var(--color-primary)' : 'inherit' }}>
+              {phase.phase}
+            </span>
+          </div>
+
+          {/* Order Created — item list + add product */}
+          {phase.phase === 'Order Created' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {selectedOrder.itemsList?.map((item: any, idx: number) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
+                  <span style={{ fontWeight: 500 }}>{item.name}</span>
+                  <span style={{ color: 'var(--color-text-muted)' }}>{item.qty} bundles</span>
+                </div>
+              ))}
+
+              {showAddItemForm ? (
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', width: '100%', boxSizing: 'border-box' }}>
+                  <select
+                    className="input-field"
+                    value={newItemVariantId}
+                    onChange={(e) => setNewItemVariantId(e.target.value)}
+                    style={{ fontSize: '0.85rem', width: '100%' }}
+                  >
+                    <option value="">Select product...</option>
+                    {productsList.filter((p: any) => p.isActive !== false).map((p: any) =>
+                      p.variants?.filter((v: any) => v.isActive !== false).map((v: any) => (
+                        <option key={v.id} value={v.id}>{p.name} - {v.size}</option>
+                      ))
+                    )}
+                  </select>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Qty</label>
+                    <Input
+                      type="number"
+                      value={newItemQty}
+                      onChange={(e) => setNewItemQty(parseInt(e.target.value) || 1)}
+                      style={{ flex: 1, height: '32px', fontSize: '0.85rem' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem', padding: 'var(--space-2)' }} onClick={() => { setShowAddItemForm(false); setNewItemVariantId(''); setNewItemQty(1); }}>Cancel</Button>
+                    <Button variant="primary" style={{ flex: 2, fontSize: '0.8rem', padding: 'var(--space-2)' }} onClick={handleAddItemToOrder} disabled={!newItemVariantId}>Add</Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddItemForm(true)}
+                  style={{ background: 'none', border: '1px dashed var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--color-primary)', textAlign: 'center' }}
+                >
+                  + Add Product
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Quotation / Weights Added — pricing editor */}
+          {(phase.phase === 'Quotation Generated' || phase.phase === 'Weights Added') && (
+            <>
+              <Card style={{ padding: 0, overflow: 'hidden' }}>
+                {selectedOrder.itemsList?.map((item: any, idx: number) => {
+                  const unitPrice = itemPrices[idx] ?? item.price ?? 0;
+                  const totalWt = Array.isArray(item.weights)
+                    ? item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0)
+                    : (item.weightKg || 0);
+                  return (
+                    <div key={idx} style={{ padding: 'var(--space-3)', borderBottom: idx < (selectedOrder.itemsList?.length ?? 0) - 1 ? '1px solid var(--color-border)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{item.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
+                          <span
+                            onClick={() => {
+                              setActiveOrderId(selectedOrder.id);
+                              setWeightsFormData(selectedOrder.itemsList.map((item: any) => ({
+                                ...item,
+                                weights: Array.isArray(item.weights) && item.weights.length === item.qty
+                                  ? [...item.weights]
+                                  : Array(item.qty).fill('')
+                              })));
+                              setShowAddWeightsModal(true);
+                            }}
+                            style={{ cursor: 'pointer', color: 'var(--color-primary)', borderBottom: '1px dashed var(--color-primary)' }}
+                          >
+                            {totalWt > 0 ? `${totalWt} kg` : 'No weight'}
+                          </span>
+                          <span>×</span>
+                          {isEditable ? (
+                            <Input
+                              type="number" value={unitPrice}
+                              onChange={(e) => setItemPrices(prev => { const n = [...prev]; n[idx] = parseFloat(e.target.value) || 0; return n; })}
+                              style={{ width: '65px', height: '24px', padding: '1px 4px', fontSize: '0.75rem', display: 'inline-block' }}
+                            />
+                          ) : <span>₹{unitPrice}</span>}
+                          <span>/kg</span>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        ₹{(totalWt * unitPrice).toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '0.9rem' }}>
+                  <span>Total</span>
+                  <span style={{ color: 'var(--color-primary)' }}>
+                    ₹{(selectedOrder.itemsList?.reduce((sum: number, item: any, idx: number) => {
+                      const wt = Array.isArray(item.weights) ? item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0) : (item.weightKg || 0);
+                      return sum + wt * (itemPrices[idx] ?? item.price ?? 0);
+                    }, 0) ?? 0).toLocaleString()}
+                  </span>
+                </div>
+              </Card>
+              {isEditable && (
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <Button variant="outline" onClick={handleSavePrices} disabled={savingPrices} style={{ fontSize: '0.8rem', flex: 1 }}>
+                    {savingPrices ? 'Saving...' : 'Save Prices'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setActiveOrderId(selectedOrder.id);
+                      setWeightsFormData(selectedOrder.itemsList.map((item: any) => ({
+                        ...item,
+                        weights: Array.isArray(item.weights) && item.weights.length === item.qty
+                          ? [...item.weights]
+                          : Array(item.qty).fill('')
+                      })));
+                      setShowAddWeightsModal(true);
+                    }}
+                    style={{ fontSize: '0.8rem', flex: 1 }}
+                  >
+                    Edit Weights
+                  </Button>
+                </div>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => handleShareQuotation(selectedOrder)}
+                style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start' }}
+              >
+                <Share2 size={14} /> Share Quotation
+              </Button>
+            </>
+          )}
+
+          {/* Attachments */}
+          {phaseAttachTypes.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {phaseAtts.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                  {phaseAtts.map((att: any) => {
+                    const isImage = att.fileName?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                    return isImage ? (
+                      <a key={att.id} href={att.fileUrl} target="_blank" rel="noopener noreferrer">
+                        <img src={att.fileUrl} alt={att.fileName} style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }} />
+                      </a>
+                    ) : (
+                      <a key={att.id} href={att.fileUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--color-primary)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', textDecoration: 'none' }}>
+                        <FileText size={14} /> {att.fileName}
+                      </a>
+                    );
+                  })}
+                </div>
+              ) : !isFuture && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: 0 }}>No files attached yet.</p>
+              )}
+              {!isFuture && (
+                <button
+                  onClick={() => { setAddPhotoContext({ orderId: selectedOrder.id, attachmentType: phaseAttachTypes[0] }); extraFileInputRef.current?.click(); }}
+                  style={{ background: 'none', border: '1px dashed var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--color-primary)', textAlign: 'center' }}
+                >
+                  + Add {phaseAttachTypes[0].replace(/_/g, ' ').toLowerCase()}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Send update to customer */}
+          {!isFuture && (
+            <button
+              onClick={() => handleResendToCustomer(phase.phase)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start', background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}
+            >
+              <Share2 size={14} /> Send Update to Customer
+            </button>
+          )}
+
+          {/* Action button — current phase only */}
+          {isCurrent && phase.action && (
+            <Button variant="primary" onClick={() => handleButtonClick(selectedOrder.id)} style={{ width: '100%' }}>
+              {phase.action}
+            </Button>
+          )}
+
+          {isFuture && (
+            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', textAlign: 'center', margin: 0 }}>
+              Complete earlier steps to unlock this phase.
+            </p>
+          )}
+        </div>
+      );
+    };
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
-              <ArrowLeft size={24} />
-            </button>
-            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Order Details</h2>
-          </div>
-          
-          {selectedOrder.phase === 'Quotation Generated' && (
-            <Button 
-              variant="outline" 
-              onClick={() => handleShareQuotation(selectedOrder)}
-              style={{ padding: '6px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <Share2 size={16} /> Share Quote
-            </Button>
-          )}
-        </div>
-
-        <Card style={{ padding: 'var(--space-5)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-            <h3 style={{ margin: 0, color: 'var(--color-primary)' }}>#{selectedOrder.id}</h3>
-            <Badge status={selectedOrder.phase === 'Completed' ? 'completed' : 'ongoing'}>
-              {selectedOrder.phase}
-            </Badge>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <User size={18} color="var(--color-text-muted)" />
-              <div onClick={() => setShowCustomerModal(true)} style={{ cursor: 'pointer' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Customer</span>
-                <span style={{ fontWeight: 600, color: 'var(--color-primary)', borderBottom: '1px dashed var(--color-primary)' }}>{selectedOrder.customer}</span>
-              </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+            <ArrowLeft size={24} />
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Order #{selectedOrder.orderNumber || selectedOrder.id}</h2>
+              <Badge status={selectedOrder.phase === 'Completed' ? 'completed' : 'ongoing'}>
+                {selectedOrder.phase}
+              </Badge>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <Package size={18} color="var(--color-text-muted)" />
-              <div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Items</span>
-                <span style={{ fontWeight: 600 }}>{selectedOrder.items} Bundles</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <Calendar size={18} color="var(--color-text-muted)" />
-              <div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Order Date</span>
-                <span style={{ fontWeight: 600 }}>{selectedOrder.date}</span>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <div>
-          <h4 style={{ marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <Package size={18} />
-            Order Items & Pricing
-          </h4>
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: 'var(--space-4)', background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>
-              <span>Item Description</span>
-              <span>Total</span>
-            </div>
-            {selectedOrder.itemsList?.map((item: any, idx: number) => {
-              const isEditable = selectedOrder.phase !== 'Dispatched' && selectedOrder.phase !== 'Completed';
-              const unitPrice = itemPrices[idx] ?? item.price ?? 0;
-              const qty = itemQtys[idx] ?? item.qty ?? 1;
-              return (
-                <div key={idx} style={{ padding: 'var(--space-4)', borderBottom: idx < selectedOrder.itemsList.length - 1 ? '1px solid var(--color-border)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500, fontSize: '0.9rem' }}>{item.name}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                      {isEditable ? (
-                        <Input
-                          type="number"
-                          value={qty}
-                          onChange={(e) => setItemQtys(prev => {
-                            const next = [...prev];
-                            next[idx] = parseInt(e.target.value) || 1;
-                            return next;
-                          })}
-                          style={{ width: '60px', height: '28px', padding: '2px 6px', fontSize: '0.8rem', display: 'inline-block' }}
-                        />
-                      ) : (
-                        <span>{qty}</span>
-                      )}
-                      <span>Bundles ×</span>
-                      {isEditable ? (
-                        <Input
-                          type="number"
-                          value={unitPrice}
-                          onChange={(e) => setItemPrices(prev => {
-                            const next = [...prev];
-                            next[idx] = parseFloat(e.target.value) || 0;
-                            return next;
-                          })}
-                          style={{ width: '80px', height: '28px', padding: '2px 6px', fontSize: '0.8rem', display: 'inline-block' }}
-                        />
-                      ) : (
-                        <span>₹{unitPrice}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>₹{(qty * unitPrice).toLocaleString()}</div>
-                </div>
-              );
-            })}
-            <div style={{ padding: 'var(--space-4)', background: 'var(--color-surface-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid var(--color-border)' }}>
-              <span style={{ fontWeight: 600 }}>Grand Total</span>
-              <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-primary)' }}>
-                {selectedOrder.phase !== 'Dispatched' && selectedOrder.phase !== 'Completed'
-                  ? `₹${selectedOrder.itemsList.reduce((sum: number, item: any, idx: number) => sum + (itemQtys[idx] ?? item.qty) * (itemPrices[idx] ?? item.price ?? 0), 0).toLocaleString()}`
-                  : selectedOrder.amount
-                }
+            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+              <span onClick={() => setShowCustomerModal(true)} style={{ cursor: 'pointer', color: 'var(--color-primary)', borderBottom: '1px dashed var(--color-primary)' }}>
+                {selectedOrder.customer}
               </span>
-            </div>
-          </Card>
-          {selectedOrder.phase !== 'Dispatched' && selectedOrder.phase !== 'Completed' && (
-            <Button
-              variant="primary"
-              style={{ width: '100%', marginTop: 'var(--space-3)', fontSize: '0.85rem' }}
-              onClick={handleSavePrices}
-              disabled={savingPrices}
-            >
-              {savingPrices ? 'Saving...' : 'Save Prices'}
-            </Button>
-          )}
+              {' · '}{selectedOrder.items} Bundles · {selectedOrder.date}
+            </p>
+          </div>
         </div>
 
-        <div>
-          <h4 style={{ marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <FileText size={18} />
-            Workflow History
-          </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', paddingLeft: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+        {/* Split layout */}
+        <div className="order-details-split" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+          {/* Left: Phase Navigation */}
+          <div className="order-history-nav" style={{ width: '120px', flexShrink: 0 }}>
             {PHASES.map((p, i) => {
               const isCompleted = i < currentIdx;
-              const isCurrent = i === currentIdx;
-              const isPending = i > currentIdx;
-              const phaseAttachmentTypes = PHASE_ATTACHMENT_TYPES[p.phase] || [];
-              const phaseAttachments = (selectedOrder.attachments || []).filter((a: any) => phaseAttachmentTypes.includes(a.type));
+              const isCurr     = i === currentIdx;
+              const isPending  = i > currentIdx;
+              const isSelected = i === effectiveIdx;
+              const isNavigable = i <= currentIdx;
 
               return (
-                <div key={i} style={{ display: 'flex', gap: 'var(--space-4)', position: 'relative' }}>
-                  {/* Vertical Line */}
+                <div key={i} style={{ position: 'relative' }}>
                   {i < PHASES.length - 1 && (
-                    <div style={{
-                      position: 'absolute', left: '7px', top: '24px', bottom: '-24px',
-                      width: '2px',
-                      background: isCompleted ? 'var(--color-primary)' : 'var(--color-border)',
-                      zIndex: 0
-                    }}></div>
+                    <div style={{ position: 'absolute', left: '7px', top: '24px', bottom: 0, width: '2px', background: isCompleted ? 'var(--color-primary)' : 'var(--color-border)', zIndex: 0 }} />
                   )}
-
-                  {/* Node */}
-                  <div style={{
-                    width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
-                    background: isPending ? 'white' : 'var(--color-primary)',
-                    border: isPending ? '2px solid var(--color-border)' : 'none',
-                    marginTop: '4px', zIndex: 1,
-                    boxShadow: isCurrent ? '0 0 0 4px var(--color-primary-light)' : 'none'
-                  }}>
-                    {isCompleted && (
-                      <div style={{ color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '10px' }}>✓</div>
-                    )}
-                  </div>
-
-                  <div style={{ opacity: isPending ? 0.5 : 1, flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: isCurrent ? 'var(--color-primary)' : 'inherit' }}>
-                      {p.phase}
+                  <div
+                    onClick={() => {
+                      if (!isNavigable) return;
+                      if (p.phase === 'Weights Added' || p.phase === 'Quotation Generated') {
+                        setActiveOrderId(selectedOrder.id);
+                        setWeightsFormData(selectedOrder.itemsList.map((item: any) => ({
+                          ...item,
+                          weights: Array.isArray(item.weights) && item.weights.length === item.qty
+                            ? [...item.weights]
+                            : Array(item.qty).fill('')
+                        })));
+                        setShowAddWeightsModal(true);
+                      } else {
+                        setSelectedPhaseIdx(i);
+                      }
+                    }}
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', paddingBottom: 'var(--space-6)', cursor: isNavigable ? 'pointer' : 'default', position: 'relative' }}
+                  >
+                    <div style={{
+                      width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                      background: isPending ? 'white' : 'var(--color-primary)',
+                      border: isPending ? '2px solid var(--color-border)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: isSelected ? '0 0 0 4px var(--color-primary-light)' : isCurr ? '0 0 0 4px var(--color-primary-light)' : 'none',
+                      zIndex: 1, position: 'relative', marginTop: '4px'
+                    }}>
+                      {isCompleted && <span style={{ color: 'white', fontSize: '10px' }}>✓</span>}
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                      {isCompleted ? 'Completed' : isCurrent ? 'Waiting for action...' : 'Pending'}
+                    <div style={{ opacity: isPending ? 0.5 : 1 }}>
+                      <span style={{
+                        fontSize: '0.95rem',
+                        fontWeight: isSelected ? 700 : 600,
+                        color: isSelected ? 'var(--color-primary)' : isCurr ? 'var(--color-primary)' : 'inherit',
+                        lineHeight: 1.3,
+                        display: 'block',
+                      }}>
+                        {PHASE_SHORT[p.phase] ?? p.phase}
+                      </span>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                        {isPending ? 'Pending' : isCurr ? 'In progress' : 'Done'}
+                      </span>
                     </div>
-
-                    {/* Inline attachments for this step */}
-                    {phaseAttachments.length > 0 && (
-                      <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-                        {phaseAttachments.map((att: any) => {
-                          const isImage = att.fileName?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-                          return isImage ? (
-                            <a key={att.id} href={att.fileUrl} target="_blank" rel="noopener noreferrer">
-                              <img
-                                src={att.fileUrl}
-                                alt={att.fileName}
-                                style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}
-                              />
-                            </a>
-                          ) : (
-                            <a key={att.id} href={att.fileUrl} target="_blank" rel="noopener noreferrer"
-                              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--color-primary)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', textDecoration: 'none' }}>
-                              <FileText size={14} /> {att.fileName}
-                            </a>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Add more photos button for completed steps that have attachments */}
-                    {(isCompleted || isCurrent) && phaseAttachmentTypes.length > 0 && (
-                      <button
-                        onClick={() => {
-                          setAddPhotoContext({ orderId: selectedOrder.id, attachmentType: phaseAttachmentTypes[0] });
-                          extraFileInputRef.current?.click();
-                        }}
-                        style={{ marginTop: 'var(--space-2)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--color-primary)', padding: 0 }}
-                      >
-                        + Add Photo
-                      </button>
-                    )}
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
-          {selectedOrder.action && (
-            <Button variant="primary" onClick={() => handleButtonClick(selectedOrder.id)}>
-              Continue: {selectedOrder.action}
-            </Button>
-          )}
+          {/* Right: Phase Content */}
+          <div className="order-details-content" style={{ flex: 1, minWidth: 0 }}>
+            {renderRightPanel()}
 
-          {UNDO_MAP[selectedOrder.phase] && (
-            <Button variant="outline" onClick={() => handleUndo(selectedOrder.id)} style={{ color: 'var(--color-error)', borderColor: 'var(--color-error)' }}>
-              <RotateCcw size={16} style={{ marginRight: '8px' }} />
-              Undo Last Step
-            </Button>
-          )}
-
-          {canDelete && (
-            <Button variant="outline" onClick={() => setConfirmDeleteOrderId(selectedOrder.id)} style={{ color: '#fa5252', borderColor: '#fa5252' }}>
-              Delete Order
-            </Button>
-          )}
+            {canDelete && (
+              <Button
+                variant="outline"
+                onClick={() => setConfirmDeleteOrderId(selectedOrder.id)}
+                style={{ color: '#fa5252', borderColor: '#fa5252', width: '100%', marginTop: 'var(--space-4)', fontSize: '0.85rem' }}
+              >
+                Delete Order
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -954,8 +1087,8 @@ export const Bookings = () => {
                       onChange={(e) => updateItem(item.id, 'product', e.target.value)}
                     >
                       <option value="">Select a product...</option>
-                      {productsList.map(p => 
-                        p.variants?.map((v: any) => (
+                      {productsList.filter((p: any) => p.isActive !== false).map(p =>
+                        p.variants?.filter((v: any) => v.isActive !== false).map((v: any) => (
                           <option key={v.id} value={v.id}>{p.name} - {v.size}</option>
                         ))
                       )}
@@ -1184,6 +1317,22 @@ export const Bookings = () => {
         @keyframes slideUp {
           from { transform: translateY(100%); }
           to { transform: translateY(0); }
+        }
+        @media (max-width: 520px) {
+          .order-details-split {
+            flex-direction: column-reverse !important;
+          }
+          .order-details-content {
+            width: 100% !important;
+          }
+          .order-details-content select,
+          .order-details-content input {
+            width: 100% !important;
+            box-sizing: border-box;
+          }
+          .order-history-nav {
+            width: 100% !important;
+          }
         }
       `}</style>
 

@@ -59,7 +59,7 @@ export const AdminSettings = () => {
         return;
       }
       
-      const res = await fetch(`${API_BASE_URL}/api/v1/products`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/products?includeInactive=true`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -160,13 +160,15 @@ export const AdminSettings = () => {
   };
 
   const toggleProductStatus = async (id: string | number) => {
-    setProducts(products.map(p => p.id === id ? { ...p, isActive: !p.isActive } : p));
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, isActive: !p.isActive } : p));
     try {
-      await fetch(`${API_BASE_URL}/api/v1/products/${id}/status`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/products/${id}/status`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}` },
       });
+      if (!res.ok) throw new Error('Toggle failed');
     } catch (e) {
+      console.error('Failed to toggle product status', e);
       fetchProducts();
     }
   };
