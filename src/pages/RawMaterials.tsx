@@ -76,6 +76,7 @@ export const RawMaterials = () => {
       gsm: String(selectedEntry.gsm || ''),
       rolls: String(selectedEntry.noOfRolls || selectedEntry.rolls || ''),
       weightKg: String(selectedEntry.weightKg || ''),
+      bundleWeightKg: String(selectedEntry.bundleWeightKg || ''),
       notes: selectedEntry.notes || '',
     });
     setIsEditing(true);
@@ -88,6 +89,7 @@ export const RawMaterials = () => {
         gsm: parseInt(editData.gsm),
         noOfRolls: parseInt(editData.rolls),
         weightKg: parseFloat(editData.weightKg),
+        bundleWeightKg: editData.bundleWeightKg ? parseFloat(editData.bundleWeightKg) : null,
         notes: editData.notes,
       };
       const res = await fetch(`${API_BASE_URL}/api/v1/raw-materials/${selectedEntry.id}`, {
@@ -181,6 +183,10 @@ export const RawMaterials = () => {
                 </div>
               </div>
               <div>
+                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Bundle Weight (KG)</label>
+                <Input type="number" step="0.01" min="0" value={editData.bundleWeightKg} onChange={e => setEditData({...editData, bundleWeightKg: e.target.value})} />
+              </div>
+              <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notes</label>
                 <textarea className="input-field" rows={3} style={{ resize: 'vertical' }} value={editData.notes} onChange={e => setEditData({...editData, notes: e.target.value})} />
               </div>
@@ -216,9 +222,15 @@ export const RawMaterials = () => {
                   <div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedEntry.noOfRolls || selectedEntry.rolls}</div>
                 </div>
               </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Total Weight</label>
-                <div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedEntry.weightKg} KG</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Total Weight</label>
+                  <div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedEntry.weightKg} KG</div>
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Bundle Weight</label>
+                  <div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedEntry.bundleWeightKg != null ? `${selectedEntry.bundleWeightKg} KG` : '—'}</div>
+                </div>
               </div>
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Notes</label>
@@ -244,6 +256,7 @@ export const RawMaterials = () => {
     gsm: '',
     rolls: '',
     weightKg: '',
+    bundleWeightKg: '',
     notes: ''
   });
 
@@ -259,6 +272,7 @@ export const RawMaterials = () => {
       gsm: parseInt(formData.gsm),
       noOfRolls: parseInt(formData.rolls),
       weightKg: parseFloat(formData.weightKg),
+      bundleWeightKg: formData.bundleWeightKg ? parseFloat(formData.bundleWeightKg) : null,
       notes: formData.notes
     };
 
@@ -274,7 +288,7 @@ export const RawMaterials = () => {
       if (res.ok) {
         setFormData({
           entryDate: new Date().toISOString().split('T')[0],
-          gsm: '', rolls: '', weightKg: '', notes: ''
+          gsm: '', rolls: '', weightKg: '', bundleWeightKg: '', notes: ''
         });
         fetchEntries();
         setTab('history');
@@ -315,6 +329,11 @@ export const RawMaterials = () => {
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Weight (KG)</label>
                 <Input type="number" step="0.01" placeholder="Total KG" value={formData.weightKg} onChange={e => setFormData({...formData, weightKg: e.target.value})} required min="0" />
               </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Bundle Weight (KG)</label>
+              <Input type="number" step="0.01" placeholder="Weight per bundle" value={formData.bundleWeightKg} onChange={e => setFormData({...formData, bundleWeightKg: e.target.value})} min="0" />
             </div>
   
             <div>
