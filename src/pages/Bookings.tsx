@@ -43,8 +43,8 @@ export const Bookings = () => {
   const [productsList, setProductsList] = useState<any[]>([]);
   const [statusMap, setStatusMap] = useState<Record<string, string>>({}); // name -> id
   const { token } = useAuth();
-  const { preferences } = useOrg();
-  const orgName = preferences.displayName || 'Portal';
+  const { theme } = useOrg();
+  const orgName = theme.displayName || 'Portal';
   const { canDelete } = usePermissions();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 

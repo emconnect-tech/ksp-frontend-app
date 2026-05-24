@@ -5,8 +5,8 @@ import { useOrg } from '../../contexts/OrgContext';
 
 export const AppLayout = () => {
   const location = useLocation();
-  const { preferences } = useOrg();
-  const orgName = preferences.displayName || '';
+  const { theme } = useOrg();
+  const orgName = theme.displayName || '';
 
   const getPageTitle = () => {
     switch (location.pathname) {

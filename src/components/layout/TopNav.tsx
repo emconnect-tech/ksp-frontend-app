@@ -9,7 +9,7 @@ type TopNavProps = {
 
 export const TopNav = ({ title }: TopNavProps) => {
   const { logout } = useAuth();
-  const { preferences } = useOrg();
+  const { theme } = useOrg();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -21,24 +21,18 @@ export const TopNav = ({ title }: TopNavProps) => {
     <header className="top-nav">
       <div className="top-nav-content">
         <div>
-          {preferences.displayName && (
+          {theme.displayName && (
             <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {preferences.displayName}
+              {theme.displayName}
             </p>
           )}
           <h1 className="page-title" style={{ margin: 0 }}>{title}</h1>
         </div>
         <div className="top-nav-actions">
-          <button className="icon-btn">
-            <Search size={22} />
-          </button>
-          <button className="icon-btn">
-            <Bell size={22} />
-          </button>
-          <button className="icon-btn" onClick={handleLogout} title="Logout">
-            <LogOut size={22} />
-          </button>
-          <div className="avatar">A</div>
+          <button className="icon-btn"><Search size={22} /></button>
+          <button className="icon-btn"><Bell size={22} /></button>
+          <button className="icon-btn" onClick={handleLogout} title="Logout"><LogOut size={22} /></button>
+          <div className="avatar">{theme.displayName?.[0] ?? 'A'}</div>
         </div>
       </div>
     </header>
