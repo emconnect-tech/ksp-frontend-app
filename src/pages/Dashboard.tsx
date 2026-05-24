@@ -12,10 +12,12 @@ import { Card } from '../design-system/components/ui/Card';
 import { Button } from '../design-system/components/ui/Button';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useOrg } from '../contexts/OrgContext';
 import { useNavigate } from 'react-router-dom';
 
 export const Dashboard = () => {
   const { user, token } = useAuth();
+  const { preferences } = useOrg();
   const navigate = useNavigate();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -56,7 +58,7 @@ export const Dashboard = () => {
     <div className="page-content" style={{ animation: 'fadeIn 0.5s ease-out' }}>
       <header style={{ marginBottom: 'var(--space-6)' }}>
         <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-primary)' }}>
-          KSP Operations
+          {preferences?.displayName || 'Operations'}
         </h1>
         <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Real-time business and production pulse.</p>
       </header>

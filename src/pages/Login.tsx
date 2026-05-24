@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../design-system/components/ui/Button';
 import { Card } from '../design-system/components/ui/Card';
@@ -6,17 +6,47 @@ import { Input } from '../design-system/components/ui/Input';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
 
+function applyTheme(prefs: { primaryColor?: string | null; secondaryColor?: string | null }) {
+  const root = document.documentElement;
+  if (prefs.primaryColor) {
+    root.style.setProperty('--color-primary', prefs.primaryColor);
+    const { r, g, b } = hexToRgb(prefs.primaryColor);
+    root.style.setProperty('--color-primary-hover', rgbToHex(r - 15, g - 15, b - 15));
+    root.style.setProperty('--color-primary-light', rgbToHex(
+      Math.round(r + (255 - r) * 0.9),
+      Math.round(g + (255 - g) * 0.9),
+      Math.round(b + (255 - b) * 0.9)
+    ));
+  }
+  if (prefs.secondaryColor) root.style.setProperty('--color-accent', prefs.secondaryColor);
+}
+function hexToRgb(hex: string) {
+  return { r: parseInt(hex.slice(1,3),16), g: parseInt(hex.slice(3,5),16), b: parseInt(hex.slice(5,7),16) };
+}
+function rgbToHex(r: number, g: number, b: number) {
+  return '#' + [r,g,b].map(v => Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
+}
+
 export const Login = () => {
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [orgPrefs, setOrgPrefs] = useState<{ displayName?: string | null; primaryColor?: string | null; secondaryColor?: string | null }>({});
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  // Locally this is empty (uses proxy). In production, Vercel injects the backend URL.
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/v1/public/org/preferences`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) { setOrgPrefs(data); applyTheme(data); }
+      })
+      .catch(() => {});
+  }, []);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, ''); // Only numbers
@@ -131,9 +161,11 @@ export const Login = () => {
             color: 'white', fontSize: '2rem', fontWeight: 'bold',
             boxShadow: 'var(--shadow-float)'
           }}>
-            K
+            {orgPrefs.displayName ? orgPrefs.displayName[0].toUpperCase() : '?'}
           </div>
-          <h1 style={{ fontSize: '1.75rem', marginBottom: 'var(--space-1)' }}>Welcome to KSP</h1>
+          <h1 style={{ fontSize: '1.75rem', marginBottom: 'var(--space-1)' }}>
+            {orgPrefs.displayName ? `Welcome to ${orgPrefs.displayName}` : 'Welcome'}
+          </h1>
           <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>
             Inventory & Order Management
           </p>

@@ -7,6 +7,7 @@ import { SegmentedControl } from '../design-system/components/ui/SegmentedContro
 import { Badge } from '../design-system/components/ui/Badge';
 import { CustomerForm } from '../components/customers/CustomerForm';
 import { useAuth } from '../contexts/AuthContext';
+import { useOrg } from '../contexts/OrgContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
 import { fetchOrders, createOrderAPI, updateOrderWeightsAPI, updateOrderStatusAPI, fetchOrderByIdAPI } from '../api';
@@ -42,6 +43,8 @@ export const Bookings = () => {
   const [productsList, setProductsList] = useState<any[]>([]);
   const [statusMap, setStatusMap] = useState<Record<string, string>>({}); // name -> id
   const { token } = useAuth();
+  const { preferences } = useOrg();
+  const orgName = preferences.displayName || 'Portal';
   const { canDelete } = usePermissions();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -288,7 +291,7 @@ export const Bookings = () => {
 
   const handleResendToCustomer = (phase: string) => {
     if (!selectedOrder) return;
-    const base = `*KSP Order Update - #${selectedOrder.orderNumber || selectedOrder.id}*\nCustomer: ${selectedOrder.customer}\n\n`;
+    const base = `*${orgName} Order Update - #${selectedOrder.orderNumber || selectedOrder.id}*\nCustomer: ${selectedOrder.customer}\n\n`;
     const messages: Record<string, string> = {
       'Order Created':          `Your order has been created.\n\nItems: ${selectedOrder.items} Bundles\nDate: ${selectedOrder.date}`,
       'Weights Added':          `Weights have been recorded for your order.\n\nTotal Weight: ${selectedOrder.totalWeight}`,
@@ -299,7 +302,7 @@ export const Bookings = () => {
       'Completed':              `Your order is complete. Thank you!\n\nTotal: ${selectedOrder.amount}`,
     };
     const body = messages[phase] ?? `Order status: ${phase}`;
-    const message = base + body + '\n\n_KSP Portal_';
+    const message = base + body + `\n\n_${orgName} Portal_`;
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
     if (navigator.clipboard) navigator.clipboard.writeText(message);
   };
@@ -494,12 +497,12 @@ export const Bookings = () => {
       return `• ${item.name}: ${item.qty} Bundles${weightStr}`;
     }).join('\n');
 
-    const message = `*KSP Quotation - #${order.id}*\n` +
+    const message = `*${orgName} Quotation - #${order.id}*\n` +
       `Customer: ${order.customer}\n` +
       `Date: ${order.date}\n\n` +
       `*Items:*\n${itemsText}\n\n` +
       `*Total Amount: ${order.amount}*\n\n` +
-      `_Generated via KSP Portal_`;
+      `_Generated via ${orgName} Portal_`;
 
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/?text=${encoded}`, '_blank');
@@ -571,7 +574,7 @@ export const Bookings = () => {
     const cust = customersList.find(c => c.id === selectedCustomer);
     const customerName = cust ? cust.name : 'New Client';
 
-    const message = `*KSP Enquiry - Quotation Template*\n` +
+    const message = `*${orgName} Enquiry - Quotation Template*\n` +
       `Customer: ${customerName}\n\n` +
       `*Proposed Items:*\n${itemsText}\n\n` +
       `*Estimated Total: ₹${totalAmt.toLocaleString()}*\n\n` +

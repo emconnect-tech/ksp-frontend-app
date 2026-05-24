@@ -1,11 +1,13 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { BottomNav } from './BottomNav';
 import { TopNav } from './TopNav';
+import { useOrg } from '../../contexts/OrgContext';
 
 export const AppLayout = () => {
   const location = useLocation();
-  
-  // A simple way to get a title based on the route
+  const { preferences } = useOrg();
+  const orgName = preferences.displayName || '';
+
   const getPageTitle = () => {
     switch (location.pathname) {
       case '/': return 'Dashboard';
@@ -13,7 +15,7 @@ export const AppLayout = () => {
       case '/customers': return 'Customers';
       case '/wallet': return 'Wallet & Payments';
       case '/profile': return 'My Profile';
-      default: return 'KSP Platform';
+      default: return orgName || 'Platform';
     }
   };
 
