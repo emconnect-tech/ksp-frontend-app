@@ -18,15 +18,20 @@ const defaultTheme: OrgTheme = {
   secondaryColor: '#3A4AD9',
 };
 
+const ORG_KEY = 'ksp_org';
+
 export function getSubdomain(): string | null {
   const parts = window.location.hostname.split('.');
   const sub = parts.length > 1 && parts[0] !== 'www' ? parts[0] : null;
-  // fallback for local dev: check ?org= query param
-  if (!sub) {
-    const param = new URLSearchParams(window.location.search).get('org');
-    return param || null;
+  if (sub) return sub;
+
+  // local dev: ?org= param takes priority, then fall back to localStorage
+  const param = new URLSearchParams(window.location.search).get('org');
+  if (param) {
+    localStorage.setItem(ORG_KEY, param);
+    return param;
   }
-  return sub;
+  return localStorage.getItem(ORG_KEY);
 }
 
 export function getOrgTheme(): OrgTheme {

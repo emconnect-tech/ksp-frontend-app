@@ -8,16 +8,13 @@ interface OrgContextType {
 
 const OrgContext = createContext<OrgContextType>({ theme: getOrgTheme() });
 
+const _theme = getOrgTheme();
+applyTheme(_theme);
+if (_theme.displayName) document.title = _theme.displayName;
+
 export const OrgProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const theme = getOrgTheme();
-
-  useEffect(() => {
-    applyTheme(theme);
-    if (theme.displayName) document.title = theme.displayName;
-  }, []);
-
   return (
-    <OrgContext.Provider value={{ theme }}>
+    <OrgContext.Provider value={{ theme: _theme }}>
       {children}
     </OrgContext.Provider>
   );
