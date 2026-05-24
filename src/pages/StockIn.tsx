@@ -3,24 +3,19 @@ import { ArrowLeft } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
-import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
 
 export const StockIn = () => {
-  const [direction, setDirection] = useState<'in' | 'out'>('in');
-  const [tab, setTab] = useState('add');
+  const [tab, setTab] = useState('history');
   const [view, setView] = useState<'list' | 'details'>('list');
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
 
   const [entries, setEntries] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
-  const [orderView, setOrderView] = useState<'list' | 'details'>('list');
   const [productsList, setProductsList] = useState<any[]>([]);
   const [gsmList, setGsmList] = useState<any[]>([]);
 
@@ -29,16 +24,6 @@ export const StockIn = () => {
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-  const handleDirectionChange = (d: string) => {
-    setDirection(d as 'in' | 'out');
-    setTab('add');
-    setView('list');
-    setOrderView('list');
-    setSelectedEntry(null);
-    setSelectedOrder(null);
-    setIsEditing(false);
-  };
 
   const handleDeleteEntry = async () => {
     if (!confirmDeleteId) return;
@@ -63,21 +48,18 @@ export const StockIn = () => {
         { id: '1', entryDate: '2026-05-02T10:00:00', type: 'Green Net - Planet Agro', gsm: 110, size: '30x60', noOfBundles: 5, weightKg: 125.0, isActive: true },
         { id: '2', entryDate: '2026-05-01T10:00:00', type: 'Tarpaulin', gsm: 90, size: '40x40', noOfBundles: 10, weightKg: 200.0, isActive: true },
       ]);
-      setOrders([]);
       setProductsList([{ id: 'mock-prod-1', name: 'Green Net', variants: [{ id: 'mock-var-1', size: '110GSM' }] }]);
       return;
     }
     try {
-      const [stockRes, prodRes, gsmRes, ordersRes] = await Promise.all([
+      const [stockRes, prodRes, gsmRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/v1/stock-in`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/v1/products`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_BASE_URL}/api/v1/orders`, { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
       if (stockRes.ok) setEntries(await stockRes.json());
       if (prodRes.ok) setProductsList(await prodRes.json());
       if (gsmRes.ok) setGsmList(await gsmRes.json());
-      if (ordersRes.ok) setOrders(await ordersRes.json());
     } catch (e) {
       console.error('Failed to fetch data', e);
     }
@@ -227,9 +209,10 @@ export const StockIn = () => {
 
   const renderAddForm = () => (
     <Card>
-      <h2 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1.25rem' }}>
-        Finished Good Entry
-      </h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
+        <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Finished Good Entry</h2>
+        <button onClick={() => setTab('history')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>✕ Cancel</button>
+      </div>
       <form onSubmit={handleSubmit}>
         <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
           <div>
@@ -443,139 +426,6 @@ export const StockIn = () => {
     );
   };
 
-  const renderOrdersList = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-      <p style={{ margin: '0 0 var(--space-2) 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-        Orders represent finished goods dispatched from stock.
-      </p>
-      {orders.length === 0 && (
-        <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 'var(--space-8)' }}>No orders found.</p>
-      )}
-      {orders.map((order: any) => {
-        const totalBundles = order.items?.reduce((sum: number, i: any) => sum + (i.noOfBundles || 0), 0) ?? 0;
-        return (
-          <Card
-            key={order.id}
-            onClick={() => { setSelectedOrder(order); setOrderView('details'); }}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}
-          >
-            <div>
-              <p style={{ margin: 0, fontWeight: 600, fontSize: '1.1rem' }}>{order.orderNumber || `Order ${order.id?.substring(0,6)}`}</p>
-              <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                {totalBundles} Bundles{order.totalWeightKg ? ` • ${order.totalWeightKg}kg` : ''}
-              </p>
-              <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : '—'} • {order.statusName || 'Pending'}
-              </p>
-            </div>
-            <Badge status="ongoing">Out</Badge>
-          </Card>
-        );
-      })}
-    </div>
-  );
-
-  const renderOrderDetails = () => {
-    if (!selectedOrder) return null;
-    const totalBundles = selectedOrder.items?.reduce((sum: number, i: any) => sum + (i.noOfBundles || 0), 0) ?? 0;
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <button onClick={() => { setOrderView('list'); setSelectedOrder(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
-            <ArrowLeft size={24} />
-          </button>
-          <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Order Details</h2>
-        </div>
-        <Card style={{ padding: 'var(--space-6)' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-            <div>
-              <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>Order Number</label>
-              <div style={{ fontWeight: 600, fontSize: '1.1rem', color: 'var(--color-primary)' }}>{selectedOrder.orderNumber || `#${selectedOrder.id?.substring(0,8)}`}</div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Date</label>
-                <div style={{ fontWeight: 600 }}>{selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleDateString() : '—'}</div>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Status</label>
-                <Badge status="ongoing">{selectedOrder.statusName || 'Pending'}</Badge>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Total Bundles</label>
-                <div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{totalBundles}</div>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Total Weight</label>
-                <div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedOrder.totalWeightKg ? `${selectedOrder.totalWeightKg} KG` : '—'}</div>
-              </div>
-            </div>
-            {selectedOrder.items?.length > 0 && (
-              <>
-                <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 0 }} />
-                <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-3)' }}>Items</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                    {selectedOrder.items.map((item: any, idx: number) => (
-                      <div key={item.id || idx} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                            {item.gsm ? `${item.gsm} GSM` : '—'}{item.size ? ` • ${item.size}` : ''}
-                          </div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
-                            {item.noOfBundles ? `${item.noOfBundles} bundles` : ''}{item.weightKg ? ` • ${item.weightKg}kg` : ''}
-                          </div>
-                        </div>
-                        {item.lineTotal != null && (
-                          <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>₹{item.lineTotal.toLocaleString()}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-            {selectedOrder.notes && (
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Notes</label>
-                <div style={{ fontSize: '0.9rem', marginTop: 'var(--space-1)', lineHeight: 1.5 }}>{selectedOrder.notes}</div>
-              </div>
-            )}
-          </div>
-        </Card>
-        <Button variant="outline" style={{ width: '100%' }} onClick={() => { setOrderView('list'); setSelectedOrder(null); }}>
-          Back to Orders
-        </Button>
-      </div>
-    );
-  };
-
-  const renderStockOut = () => {
-    if (orderView === 'details') return renderOrderDetails();
-    return renderOrdersList();
-  };
-
-  const renderStockIn = () => {
-    if (view === 'details') return renderDetails();
-    return (
-      <>
-        <SegmentedControl
-          options={[
-            { label: 'Add Stock-In', value: 'add' },
-            { label: 'History', value: 'history' }
-          ]}
-          value={tab}
-          onChange={setTab}
-        />
-        <div style={{ marginTop: 'var(--space-6)' }}>
-          {tab === 'add' ? renderAddForm() : renderHistoryList()}
-        </div>
-      </>
-    );
-  };
-
   return (
     <div className="page-content">
       {confirmDeleteId && (
@@ -593,18 +443,19 @@ export const StockIn = () => {
         </div>
       )}
 
-      <SegmentedControl
-        options={[
-          { label: 'Stock In', value: 'in' },
-          { label: 'Stock Out', value: 'out' },
-        ]}
-        value={direction}
-        onChange={handleDirectionChange}
-      />
-
-      <div style={{ marginTop: 'var(--space-4)' }}>
-        {direction === 'in' ? renderStockIn() : renderStockOut()}
-      </div>
+      {view === 'details' ? renderDetails() : (
+        tab === 'add' ? renderAddForm() : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>History</h3>
+              <Button variant="primary" style={{ padding: '6px 16px', fontSize: '0.85rem' }} onClick={() => setTab('add')}>
+                + Add Stock-In
+              </Button>
+            </div>
+            {renderHistoryList()}
+          </>
+        )
+      )}
     </div>
   );
 };
