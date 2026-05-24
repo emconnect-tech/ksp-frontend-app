@@ -19,6 +19,7 @@ export const RawMaterials = () => {
   const [entries, setEntries] = useState<any[]>([]);
   const [rollWeights, setRollWeights] = useState<Record<number, string>>({});
   const [gsmList, setGsmList] = useState<any[]>([]);
+  const [rawMaterialTypes, setRawMaterialTypes] = useState<any[]>([]);
 
   const { token } = useAuth();
   const { canDelete, canEdit } = usePermissions();
@@ -45,8 +46,8 @@ export const RawMaterials = () => {
   const fetchEntries = async () => {
     if (config.USE_MOCK_API) {
       setEntries([
-        { id: '1', date: '2026-05-02', gsm: 110, rolls: 10, weightKg: 250.5, status: 'Active', rollWeights: { 1: 25.5, 2: 26.0, 3: 24.8, 4: 25.1, 5: 25.0, 6: 24.9, 7: 25.3, 8: 25.0, 9: 24.7, 10: 24.2 } },
-        { id: '2', date: '2026-05-01', gsm: 90, rolls: 5, weightKg: 120.0, status: 'Active', rollWeights: { 1: 24.0, 2: 24.5, 3: 23.8, 4: 24.2, 5: 23.5 } },
+        { id: '1', date: '2026-05-02', materialTypeName: 'HDPE Tape', gsm: 110, rolls: 10, weightKg: 250.5, status: 'Active', rollWeights: { 1: 25.5, 2: 26.0, 3: 24.8, 4: 25.1, 5: 25.0, 6: 24.9, 7: 25.3, 8: 25.0, 9: 24.7, 10: 24.2 } },
+        { id: '2', date: '2026-05-01', materialTypeName: null, gsm: 90, rolls: 5, weightKg: 120.0, status: 'Active', rollWeights: { 1: 24.0, 2: 24.5, 3: 23.8, 4: 24.2, 5: 23.5 } },
       ]);
       return;
     }
@@ -66,7 +67,20 @@ export const RawMaterials = () => {
       .then(r => r.ok ? r.json() : [])
       .then(setGsmList)
       .catch(() => {});
+    fetch(`${API_BASE_URL}/api/v1/raw-material-types`, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(setRawMaterialTypes)
+      .catch(() => {});
   }, []);
+
+  // Find a specific variant across all types
+  const findRmVariant = (variantId: string) => {
+    for (const t of rawMaterialTypes) {
+      const v = t.variants?.find((v: any) => v.id === variantId);
+      if (v) return { type: t, variant: v };
+    }
+    return null;
+  };
 
   const handleViewDetails = (entry: any) => {
     setSelectedEntry(entry);
@@ -82,6 +96,7 @@ export const RawMaterials = () => {
     }
     setEditRollWeights(existing);
     setEditData({
+      rawMaterialTypeVariantId: selectedEntry.rawMaterialTypeVariantId || '',
       entryDate: selectedEntry.entryDate || selectedEntry.date || '',
       gsm: String(selectedEntry.gsm || ''),
       rolls: String(rolls),
@@ -100,6 +115,15 @@ export const RawMaterials = () => {
     });
   };
 
+  const handleEditVariantChange = (variantId: string) => {
+    const found = variantId ? findRmVariant(variantId) : null;
+    setEditData((prev: any) => ({
+      ...prev,
+      rawMaterialTypeVariantId: variantId,
+      gsm: found?.variant.gsm ? String(found.variant.gsm) : prev.gsm,
+    }));
+  };
+
   const toRollWeightsPayload = (weights: Record<number, string>) => {
     const payload: Record<number, number> = {};
     Object.entries(weights).forEach(([k, v]) => {
@@ -115,6 +139,7 @@ export const RawMaterials = () => {
     try {
       const rollWeightsPayload = toRollWeightsPayload(editRollWeights);
       const payload = {
+        rawMaterialTypeVariantId: editData.rawMaterialTypeVariantId || null,
         entryDate: editData.entryDate,
         gsm: parseInt(editData.gsm),
         noOfRolls: parseInt(editData.rolls),
@@ -141,7 +166,6 @@ export const RawMaterials = () => {
     }
   };
 
-  // Same grid pattern as the Orders "Add Bundle Weights" modal
   const renderRollWeightInputs = (
     count: number,
     weights: Record<number, string>,
@@ -183,9 +207,11 @@ export const RawMaterials = () => {
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}
         >
           <div>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: '1.1rem' }}>{entry.noOfRolls || entry.rolls} Rolls ({entry.weightKg}kg)</p>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: '1.1rem' }}>
+              {entry.materialTypeName || 'Raw Material'} — {entry.noOfRolls || entry.rolls} Rolls
+            </p>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-              {entry.entryDate || entry.date} • {entry.gsm} GSM
+              {entry.entryDate || entry.date} • {entry.gsm} GSM • {entry.weightKg}kg
             </p>
           </div>
           <Badge status="ongoing">{entry.status || 'Active'}</Badge>
@@ -210,12 +236,8 @@ export const RawMaterials = () => {
           </div>
           {!isEditing && (
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              {canEdit && (
-                <Button variant="outline" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={handleStartEdit}>Edit</Button>
-              )}
-              {canDelete && (
-                <Button variant="outline" style={{ padding: '4px 12px', fontSize: '0.8rem', color: '#fa5252', borderColor: '#fa5252' }} onClick={() => setConfirmDeleteId(selectedEntry.id)}>Delete</Button>
-              )}
+              {canEdit && <Button variant="outline" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={handleStartEdit}>Edit</Button>}
+              {canDelete && <Button variant="outline" style={{ padding: '4px 12px', fontSize: '0.8rem', color: '#fa5252', borderColor: '#fa5252' }} onClick={() => setConfirmDeleteId(selectedEntry.id)}>Delete</Button>}
             </div>
           )}
         </div>
@@ -224,17 +246,34 @@ export const RawMaterials = () => {
           {isEditing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <div>
+                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Material Type (Optional)</label>
+                <select className="input-field" value={editData.rawMaterialTypeVariantId} onChange={e => handleEditVariantChange(e.target.value)}>
+                  <option value="">— None / Manual entry —</option>
+                  {rawMaterialTypes.filter((t: any) => t.isActive).map((t: any) =>
+                    t.variants?.filter((v: any) => v.isActive).map((v: any) => (
+                      <option key={v.id} value={v.id}>
+                        {t.name}{v.gsm ? ` — ${v.gsm} GSM` : ''}{v.spec ? ` • ${v.spec}` : ''}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+              <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
                 <Input type="date" value={editData.entryDate} onChange={e => setEditData({...editData, entryDate: e.target.value})} required />
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-                <select className="input-field" value={editData.gsm} onChange={e => setEditData({...editData, gsm: e.target.value})} required>
-                  <option value="">Select GSM...</option>
-                  {gsmList.map((g: any) => (
-                    <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
-                  ))}
-                </select>
+                {editData.rawMaterialTypeVariantId ? (
+                  <Input type="text" value={editData.gsm ? `${editData.gsm} GSM` : ''} readOnly style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }} />
+                ) : (
+                  <select className="input-field" value={editData.gsm} onChange={e => setEditData({...editData, gsm: e.target.value})} required>
+                    <option value="">Select GSM...</option>
+                    {gsmList.map((g: any) => (
+                      <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
@@ -260,6 +299,12 @@ export const RawMaterials = () => {
                 <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>Entry ID</label>
                 <div style={{ fontWeight: 600, fontSize: '1.1rem', color: 'var(--color-primary)' }}>#RM-00{selectedEntry.id}</div>
               </div>
+              {selectedEntry.materialTypeName && (
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Material Type</label>
+                  <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{selectedEntry.materialTypeName}</div>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
                 <div>
                   <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Date</label>
@@ -318,11 +363,21 @@ export const RawMaterials = () => {
   };
 
   const [formData, setFormData] = useState({
+    rawMaterialTypeVariantId: '',
     entryDate: new Date().toISOString().split('T')[0],
     gsm: '',
     rolls: '',
     notes: ''
   });
+
+  const handleVariantChange = (variantId: string) => {
+    const found = variantId ? findRmVariant(variantId) : null;
+    setFormData(prev => ({
+      ...prev,
+      rawMaterialTypeVariantId: variantId,
+      gsm: found?.variant.gsm ? String(found.variant.gsm) : prev.gsm,
+    }));
+  };
 
   const handleRollCountChange = (value: string) => {
     setFormData(prev => ({ ...prev, rolls: value }));
@@ -340,6 +395,7 @@ export const RawMaterials = () => {
 
     const rollWeightsPayload = toRollWeightsPayload(rollWeights);
     const payload = {
+      rawMaterialTypeVariantId: formData.rawMaterialTypeVariantId || null,
       entryDate: formData.entryDate,
       gsm: parseInt(formData.gsm),
       noOfRolls: parseInt(formData.rolls),
@@ -355,7 +411,7 @@ export const RawMaterials = () => {
         body: JSON.stringify(payload)
       });
       if (res.ok) {
-        setFormData({ entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', notes: '' });
+        setFormData({ rawMaterialTypeVariantId: '', entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', notes: '' });
         setRollWeights({});
         fetchEntries();
         setTab('history');
@@ -372,21 +428,38 @@ export const RawMaterials = () => {
     const rollCount = parseInt(formData.rolls) || 0;
     return (
       <Card>
-        <h2 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1.25rem' }}>New Raw Material</h2>
+        <h2 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1.25rem' }}>New Raw Material Entry</h2>
         <form onSubmit={handleSubmit}>
           <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Material Type (Optional)</label>
+              <select className="input-field" value={formData.rawMaterialTypeVariantId} onChange={e => handleVariantChange(e.target.value)}>
+                <option value="">— None / Manual entry —</option>
+                {rawMaterialTypes.filter((t: any) => t.isActive).map((t: any) =>
+                  t.variants?.filter((v: any) => v.isActive).map((v: any) => (
+                    <option key={v.id} value={v.id}>
+                      {t.name}{v.gsm ? ` — ${v.gsm} GSM` : ''}{v.spec ? ` • ${v.spec}` : ''}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
               <Input type="date" value={formData.entryDate} onChange={e => setFormData({...formData, entryDate: e.target.value})} required />
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-              <select className="input-field" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required>
-                <option value="">Select GSM...</option>
-                {gsmList.map((g: any) => (
-                  <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
-                ))}
-              </select>
+              {formData.rawMaterialTypeVariantId ? (
+                <Input type="text" value={formData.gsm ? `${formData.gsm} GSM` : ''} readOnly style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }} />
+              ) : (
+                <select className="input-field" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required>
+                  <option value="">Select GSM...</option>
+                  {gsmList.map((g: any) => (
+                    <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
