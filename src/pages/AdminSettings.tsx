@@ -100,6 +100,13 @@ export const AdminSettings = () => {
   const [newVariantRate, setNewVariantRate] = useState('');
   const [newVariantWeight, setNewVariantWeight] = useState('');
 
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editProductName, setEditProductName] = useState('');
+  const [editProductDesc, setEditProductDesc] = useState('');
+
+  const [editingVariant, setEditingVariant] = useState<{ productId: string; variantId: string } | null>(null);
+  const [editVariantData, setEditVariantData] = useState({ gsm: '', size: '', rate: '', weight: '' });
+
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'variant'; productId: string; variantId: string; label: string } | null>(null);
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<{ id: string; name: string } | null>(null);
 
@@ -130,6 +137,51 @@ export const AdminSettings = () => {
       fetchProducts();
     } catch (e) {
       console.error('Failed to delete variant', e);
+    }
+  };
+
+  const handleSaveProduct = async (productId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/products/${productId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: editProductName, description: editProductDesc }),
+      });
+      if (res.ok) {
+        setEditingProductId(null);
+        fetchProducts();
+      } else {
+        alert('Failed to update product');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to update product');
+    }
+  };
+
+  const handleSaveVariant = async () => {
+    if (!editingVariant) return;
+    const { productId, variantId } = editingVariant;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/products/${productId}/variants/${variantId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          gsm: editVariantData.gsm ? parseInt(editVariantData.gsm) : null,
+          size: editVariantData.size || null,
+          rateOverride: editVariantData.rate ? parseFloat(editVariantData.rate) : null,
+          weightPerBundleKg: editVariantData.weight ? parseFloat(editVariantData.weight) : null,
+        }),
+      });
+      if (res.ok) {
+        setEditingVariant(null);
+        fetchProducts();
+      } else {
+        alert('Failed to update variant');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to update variant');
     }
   };
 
@@ -391,43 +443,102 @@ export const AdminSettings = () => {
 
             {products.map((product) => (
               <Card key={product.id} style={{ padding: 'var(--space-4)', opacity: product.isActive ? 1 : 0.6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      <strong style={{ fontSize: '1.1rem' }}>{product.name}</strong>
-                      {!product.isActive && <Badge status="completed">Disabled</Badge>}
-                    </div>
-                    {product.description && (
-                      <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                        {product.description}
+                <div style={{ marginBottom: 'var(--space-3)' }}>
+                  {editingProductId === product.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                      <Input
+                        type="text"
+                        value={editProductName}
+                        onChange={e => setEditProductName(e.target.value)}
+                        placeholder="Product name"
+                        autoFocus
+                      />
+                      <Input
+                        type="text"
+                        value={editProductDesc}
+                        onChange={e => setEditProductDesc(e.target.value)}
+                        placeholder="Description (optional)"
+                      />
+                      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => setEditingProductId(null)}>Cancel</Button>
+                        <Button variant="primary" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => handleSaveProduct(product.id)}>Save</Button>
                       </div>
-                    )}
-                  </div>
-                  {canManageCatalog && (
-                    <Button
-                      variant={product.isActive ? "outline" : "primary"}
-                      style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                      onClick={() => toggleProductStatus(product.id)}
-                    >
-                      {product.isActive ? 'Disable' : 'Enable'}
-                    </Button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <strong style={{ fontSize: '1.1rem' }}>{product.name}</strong>
+                          {!product.isActive && <Badge status="completed">Disabled</Badge>}
+                        </div>
+                        {product.description && (
+                          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>{product.description}</div>
+                        )}
+                      </div>
+                      {canManageCatalog && (
+                        <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
+                          <Button
+                            variant="outline"
+                            style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                            onClick={() => { setEditingProductId(product.id); setEditProductName(product.name); setEditProductDesc(product.description || ''); }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant={product.isActive ? "outline" : "primary"}
+                            style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                            onClick={() => toggleProductStatus(product.id)}
+                          >
+                            {product.isActive ? 'Disable' : 'Enable'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
                 {product.variants && product.variants.map((v: any, i: number) => (
-                  <div key={v.id || i} style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.85rem' }}>{v.gsm ? `${v.gsm} GSM` : ''}{v.gsm && v.size ? ' • ' : ''}{v.size || ''}{v.weightPerBundleKg ? ` • ${v.weightPerBundleKg}kg/bundle` : ''}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      <strong style={{ fontSize: '0.85rem' }}>₹{v.rateOverride}</strong>
-                      {canDelete && v.id && (
-                        <button
-                          onClick={() => setConfirmDelete({ type: 'variant', productId: product.id, variantId: v.id, label: v.size })}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '0.75rem', padding: '2px 4px', lineHeight: 1 }}
-                          title="Remove pricing record"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
+                  <div key={v.id || i} style={{ background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-2)', overflow: 'hidden' }}>
+                    {editingVariant?.variantId === v.id ? (
+                      <div style={{ padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                          <Input placeholder="GSM" type="number" value={editVariantData.gsm} onChange={e => setEditVariantData(d => ({ ...d, gsm: e.target.value }))} style={{ flex: 1 }} autoFocus />
+                          <Input placeholder="Size (e.g. 30x60)" value={editVariantData.size} onChange={e => setEditVariantData(d => ({ ...d, size: e.target.value }))} style={{ flex: 1 }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                          <Input placeholder="Rate (₹)" type="number" value={editVariantData.rate} onChange={e => setEditVariantData(d => ({ ...d, rate: e.target.value }))} style={{ flex: 1 }} />
+                          <Input placeholder="Wt/bundle (kg)" type="number" value={editVariantData.weight} onChange={e => setEditVariantData(d => ({ ...d, weight: e.target.value }))} style={{ flex: 1 }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                          <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => setEditingVariant(null)}>Cancel</Button>
+                          <Button variant="primary" style={{ flex: 1, fontSize: '0.8rem' }} onClick={handleSaveVariant}>Save</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ padding: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.85rem' }}>{v.gsm ? `${v.gsm} GSM` : ''}{v.gsm && v.size ? ' • ' : ''}{v.size || ''}{v.weightPerBundleKg ? ` • ${v.weightPerBundleKg}kg/bundle` : ''}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <strong style={{ fontSize: '0.85rem' }}>₹{v.rateOverride}</strong>
+                          {canManageCatalog && v.id && (
+                            <button
+                              onClick={() => { setEditingVariant({ productId: product.id, variantId: v.id }); setEditVariantData({ gsm: String(v.gsm || ''), size: v.size || '', rate: String(v.rateOverride || ''), weight: String(v.weightPerBundleKg || '') }); }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', fontSize: '0.75rem', padding: '2px 4px' }}
+                              title="Edit variant"
+                            >
+                              ✎
+                            </button>
+                          )}
+                          {canDelete && v.id && (
+                            <button
+                              onClick={() => setConfirmDelete({ type: 'variant', productId: product.id, variantId: v.id, label: v.size })}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '0.75rem', padding: '2px 4px', lineHeight: 1 }}
+                              title="Remove pricing record"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {canManageCatalog && (
