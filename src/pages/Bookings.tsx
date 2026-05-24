@@ -614,54 +614,55 @@ export const Bookings = () => {
     );
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', maxWidth: '680px' }}>
         {filteredOrders.length > 0 ? filteredOrders.map((order) => (
-          <Card 
-            key={order.id} 
+          <Card
+            key={order.id}
             onClick={() => handleViewDetails(order)}
-            style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', padding: 'var(--space-4)', cursor: 'pointer' }}
+            style={{ padding: 'var(--space-4)', cursor: 'pointer' }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 600 }}>Order #{order.id}</p>
-                <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                  {order.customer} • {order.items} Bundles
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)' }}>
+              {/* Left: order info */}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.9rem' }}>
+                  #{order.orderNumber || order.id.substring(0, 8)}
                 </p>
-                <p style={{ margin: '2px 0 0', fontSize: '0.85rem', fontWeight: 600 }}>
-                  {order.amount}
+                <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {order.customer} · {order.items} Bundles · {order.amount}
                 </p>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <Badge status={order.phase === 'Completed' ? 'completed' : 'ongoing'} style={{ 
-                  background: order.phase === 'Completed' ? 'var(--color-success-light)' : 'var(--color-surface-muted)', 
-                  color: order.phase === 'Completed' ? 'var(--color-success)' : 'var(--color-text-main)' 
-                }}>
-                  {order.phase}
-                </Badge>
-                <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{order.date}</p>
+
+              {/* Right: phase + date + actions */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <Badge status={order.phase === 'Completed' ? 'completed' : 'ongoing'} style={{
+                    background: order.phase === 'Completed' ? 'var(--color-success-light)' : 'var(--color-surface-muted)',
+                    color: order.phase === 'Completed' ? 'var(--color-success)' : 'var(--color-text-main)',
+                    fontSize: '0.7rem'
+                  }}>
+                    {order.phase}
+                  </Badge>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{order.date}</p>
+                </div>
+                {order.action && (
+                  <Button
+                    variant="primary"
+                    onClick={(e) => { e.stopPropagation(); handleButtonClick(order.id); }}
+                    style={{ fontSize: '0.75rem', padding: '4px 10px', whiteSpace: 'nowrap' }}
+                  >
+                    {order.action}
+                  </Button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteOrderId(order.id); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '1rem', padding: '4px', lineHeight: 1 }}
+                    title="Delete order"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
-            </div>
-            
-            <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 0 }} />
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              {order.action && (
-                <Button
-                  variant="primary"
-                  onClick={(e) => { e.stopPropagation(); handleButtonClick(order.id); }}
-                  style={{ flex: 1, fontSize: '0.8rem', padding: 'var(--space-2)' }}
-                >
-                  Action: {order.action}
-                </Button>
-              )}
-              {canDelete && (
-                <Button
-                  variant="outline"
-                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteOrderId(order.id); }}
-                  style={{ fontSize: '0.8rem', padding: 'var(--space-2) var(--space-3)', color: '#fa5252', borderColor: '#fa5252' }}
-                >
-                  Delete
-                </Button>
-              )}
             </div>
           </Card>
         )) : (
