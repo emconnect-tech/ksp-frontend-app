@@ -163,20 +163,37 @@ export const Bookings = () => {
 
   const [showAddWeightsModal, setShowAddWeightsModal] = useState(false);
   const [weightsFormData, setWeightsFormData] = useState<any[]>([]);
+  const [stockInEntries, setStockInEntries] = useState<any[]>([]);
+  const [manualBundle, setManualBundle] = useState<Record<string, boolean>>({});
   const extraFileInputRef = useRef<HTMLInputElement>(null);
   const [addPhotoContext, setAddPhotoContext] = useState<{ orderId: string; attachmentType: string } | null>(null);
+
+  const openWeightsModal = async (order: any) => {
+    setActiveOrderId(order.id);
+    setWeightsFormData(order.itemsList.map((item: any) => ({
+      ...item,
+      weights: Array.isArray(item.weights) && item.weights.length === item.qty
+        ? [...item.weights]
+        : Array(item.qty).fill('')
+    })));
+    setManualBundle({});
+    if (!config.USE_MOCK_API) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/stock-in`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) setStockInEntries(await res.json());
+      } catch (e) {
+        console.error('Failed to fetch stock-in', e);
+      }
+    }
+    setShowAddWeightsModal(true);
+  };
 
   const handleButtonClick = (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
     if (order?.phase === 'Order Created') {
-      setActiveOrderId(orderId);
-      setWeightsFormData(order.itemsList.map((item: any) => ({
-        ...item,
-        weights: Array.isArray(item.weights) && item.weights.length === item.qty 
-          ? [...item.weights] 
-          : Array(item.qty).fill('')
-      })));
-      setShowAddWeightsModal(true);
+      openWeightsModal(order);
       return;
     }
     if (order?.phase === 'Weights Added') {
@@ -555,6 +572,8 @@ export const Bookings = () => {
       };
 
       setOrders(prev => [newOrder, ...prev]);
+      setSelectedOrder(newOrder);
+      setView('details');
       setTab('ongoing');
       setWizardStep(1);
       setSelectedCustomer('');
@@ -759,14 +778,7 @@ export const Bookings = () => {
                         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
                           <span
                             onClick={() => {
-                              setActiveOrderId(selectedOrder.id);
-                              setWeightsFormData(selectedOrder.itemsList.map((item: any) => ({
-                                ...item,
-                                weights: Array.isArray(item.weights) && item.weights.length === item.qty
-                                  ? [...item.weights]
-                                  : Array(item.qty).fill('')
-                              })));
-                              setShowAddWeightsModal(true);
+                              openWeightsModal(selectedOrder);
                             }}
                             style={{ cursor: 'pointer', color: 'var(--color-primary)', borderBottom: '1px dashed var(--color-primary)' }}
                           >
@@ -806,16 +818,7 @@ export const Bookings = () => {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      setActiveOrderId(selectedOrder.id);
-                      setWeightsFormData(selectedOrder.itemsList.map((item: any) => ({
-                        ...item,
-                        weights: Array.isArray(item.weights) && item.weights.length === item.qty
-                          ? [...item.weights]
-                          : Array(item.qty).fill('')
-                      })));
-                      setShowAddWeightsModal(true);
-                    }}
+                    onClick={() => openWeightsModal(selectedOrder)}
                     style={{ fontSize: '0.8rem', flex: 1 }}
                   >
                     Edit Weights
@@ -934,14 +937,7 @@ export const Bookings = () => {
                     onClick={() => {
                       if (!isNavigable) return;
                       if (p.phase === 'Weights Added' || p.phase === 'Quotation Generated') {
-                        setActiveOrderId(selectedOrder.id);
-                        setWeightsFormData(selectedOrder.itemsList.map((item: any) => ({
-                          ...item,
-                          weights: Array.isArray(item.weights) && item.weights.length === item.qty
-                            ? [...item.weights]
-                            : Array(item.qty).fill('')
-                        })));
-                        setShowAddWeightsModal(true);
+                        openWeightsModal(selectedOrder);
                       } else {
                         setSelectedPhaseIdx(i);
                       }
@@ -1227,29 +1223,96 @@ export const Bookings = () => {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: 'var(--space-4)'
         }} onClick={() => setShowAddWeightsModal(false)}>
-          <Card style={{ width: '100%', maxWidth: '400px', padding: 'var(--space-6)', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>Add Bundle Weights</h3>
-            
+          <Card style={{ width: '100%', maxWidth: '440px', padding: 'var(--space-6)', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: 'var(--space-1)' }}>Add Bundle Weights</h3>
+            {stockInEntries.length > 0 && (
+              <p style={{ margin: '0 0 var(--space-4) 0', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                Select from stock-in or type manually for each bundle.
+              </p>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
               {weightsFormData.map((item, itemIdx) => (
                 <div key={itemIdx}>
                   <h4 style={{ margin: '0 0 var(--space-3) 0', fontSize: '0.9rem' }}>{item.name} ({item.qty} Bundles)</h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 'var(--space-3)' }}>
-                    {item.weights.map((w: any, wIdx: number) => (
-                      <div key={wIdx} style={{ position: 'relative' }}>
-                        <span style={{ position: 'absolute', top: '-8px', left: '6px', fontSize: '10px', background: 'white', padding: '0 4px', color: 'var(--color-primary)', fontWeight: 600 }}>#{wIdx + 1}</span>
-                        <Input 
-                          type="number"
-                          style={{ textAlign: 'center', height: '44px' }}
-                          value={w}
-                          onChange={(e) => {
-                            const newForm = [...weightsFormData];
-                            newForm[itemIdx].weights[wIdx] = e.target.value;
-                            setWeightsFormData(newForm);
-                          }}
-                        />
-                      </div>
-                    ))}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    {item.weights.map((w: any, wIdx: number) => {
+                      const key = `${itemIdx}-${wIdx}`;
+                      const isManual = manualBundle[key];
+                      return (
+                        <div key={wIdx} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-primary)', minWidth: '28px' }}>#{wIdx + 1}</span>
+                          {stockInEntries.length > 0 && !isManual ? (
+                            <select
+                              className="input-field"
+                              value={w || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === '__manual__') {
+                                  setManualBundle(prev => ({ ...prev, [key]: true }));
+                                  const newForm = [...weightsFormData];
+                                  newForm[itemIdx].weights[wIdx] = '';
+                                  setWeightsFormData(newForm);
+                                } else {
+                                  const newForm = [...weightsFormData];
+                                  newForm[itemIdx].weights[wIdx] = val;
+                                  setWeightsFormData(newForm);
+                                }
+                              }}
+                              style={{ flex: 1, fontSize: '0.85rem' }}
+                            >
+                              <option value="">— Select from Stock-In —</option>
+                              {stockInEntries.flatMap((entry: any) => {
+                                const label = entry.type || entry.productVariantId?.substring(0, 6) || 'Stock';
+                                const date = new Date(entry.entryDate).toLocaleDateString();
+                                if (entry.bundleWeights) {
+                                  return entry.bundleWeights.split(',').map((w: string, i: number) => (
+                                    <option key={`${entry.id}-${i}`} value={w.trim()}>
+                                      {w.trim()} kg — {label} bundle #{i + 1} ({date})
+                                    </option>
+                                  ));
+                                }
+                                const perBundle = entry.noOfBundles > 0
+                                  ? (entry.weightKg / entry.noOfBundles).toFixed(2)
+                                  : entry.weightKg;
+                                return (
+                                  <option key={entry.id} value={perBundle}>
+                                    {perBundle} kg — {label} ({date})
+                                  </option>
+                                );
+                              })}
+                              <option value="__manual__">Enter manually…</option>
+                            </select>
+                          ) : (
+                            <Input
+                              type="number"
+                              placeholder="kg"
+                              step="0.01"
+                              style={{ flex: 1, height: '36px' }}
+                              value={w}
+                              onChange={(e) => {
+                                const newForm = [...weightsFormData];
+                                newForm[itemIdx].weights[wIdx] = e.target.value;
+                                setWeightsFormData(newForm);
+                              }}
+                              autoFocus={isManual}
+                            />
+                          )}
+                          {isManual && (
+                            <button
+                              type="button"
+                              onClick={() => setManualBundle(prev => ({ ...prev, [key]: false }))}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--color-text-muted)', padding: '2px 4px' }}
+                            >
+                              ↩
+                            </button>
+                          )}
+                          {w && !isManual && (
+                            <span style={{ fontSize: '0.8rem', fontWeight: 600, minWidth: '40px', textAlign: 'right' }}>{w} kg</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}

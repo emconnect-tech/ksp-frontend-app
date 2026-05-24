@@ -137,6 +137,27 @@ export const StockIn = () => {
     weightKg: '',
     notes: ''
   });
+  const [bundleWeights, setBundleWeights] = useState<string[]>([]);
+
+  const handleBundleCountChange = (val: string) => {
+    const n = parseInt(val) || 0;
+    setBundleWeights(prev => {
+      const next = Array(n).fill('').map((_, i) => prev[i] ?? '');
+      const total = next.reduce((s, w) => s + (parseFloat(w) || 0), 0);
+      setFormData(f => ({ ...f, bundles: val, weightKg: total > 0 ? String(total) : f.weightKg }));
+      return next;
+    });
+  };
+
+  const handleBundleWeightChange = (idx: number, val: string) => {
+    setBundleWeights(prev => {
+      const next = [...prev];
+      next[idx] = val;
+      const total = next.reduce((s, w) => s + (parseFloat(w) || 0), 0);
+      setFormData(f => ({ ...f, weightKg: total > 0 ? String(parseFloat(total.toFixed(2))) : f.weightKg }));
+      return next;
+    });
+  };
 
   const findVariant = (variantId: string) => {
     for (const p of productsList) {
@@ -171,7 +192,7 @@ export const StockIn = () => {
       return;
     }
 
-    const payload = {
+    const payload: any = {
       productVariantId: formData.productVariantId,
       entryDate: formData.entryDate,
       gsm: parseInt(formData.gsm),
@@ -180,6 +201,9 @@ export const StockIn = () => {
       weightKg: parseFloat(formData.weightKg),
       notes: formData.notes
     };
+    if (bundleWeights.some(w => w)) {
+      payload.bundleWeights = bundleWeights.join(',');
+    }
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/stock-in`, {
@@ -196,6 +220,7 @@ export const StockIn = () => {
           entryDate: new Date().toISOString().split('T')[0] + 'T00:00:00',
           gsm: '', size: '', bundles: '', weightKg: '', notes: ''
         });
+        setBundleWeights([]);
         fetchData();
         setTab('history');
       } else {
@@ -245,16 +270,43 @@ export const StockIn = () => {
               <Input type="text" placeholder="e.g. 30x60" value={formData.size} onChange={e => setFormData({...formData, size: e.target.value})} readOnly={!!formData.productVariantId} style={formData.productVariantId ? { background: 'var(--color-surface)', color: 'var(--color-text-muted)' } : {}} />
             </div>
           </div>
-          <div className="grid-layout">
+          <div>
+            <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Bundles</label>
+            <Input type="number" placeholder="Count" min="1" value={formData.bundles} onChange={e => handleBundleCountChange(e.target.value)} required />
+          </div>
+          {bundleWeights.length > 0 && (
             <div>
-              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Bundles</label>
-              <Input type="number" placeholder="Count" min="1" value={formData.bundles} onChange={e => setFormData({...formData, bundles: e.target.value})} required />
+              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                Bundle Weights (kg each)
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 'var(--space-2)' }}>
+                {bundleWeights.map((w, idx) => (
+                  <div key={idx} style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', top: '-8px', left: '6px', fontSize: '10px', background: 'white', padding: '0 4px', color: 'var(--color-primary)', fontWeight: 600 }}>#{idx + 1}</span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="kg"
+                      value={w}
+                      onChange={e => handleBundleWeightChange(idx, e.target.value)}
+                      style={{ textAlign: 'center', height: '44px' }}
+                    />
+                  </div>
+                ))}
+              </div>
+              {formData.weightKg && (
+                <p style={{ margin: 'var(--space-2) 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                  Total: <strong>{formData.weightKg} kg</strong>
+                </p>
+              )}
             </div>
+          )}
+          {bundleWeights.length === 0 && (
             <div>
-              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Weight (KG)</label>
+              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Total Weight (KG)</label>
               <Input type="number" step="0.01" placeholder="Total KG" value={formData.weightKg} onChange={e => setFormData({...formData, weightKg: e.target.value})} required min="0" />
             </div>
-          </div>
+          )}
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notes (Optional)</label>
             <textarea className="input-field" rows={3} placeholder="Auditor notes..." style={{ resize: 'vertical' }} value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
