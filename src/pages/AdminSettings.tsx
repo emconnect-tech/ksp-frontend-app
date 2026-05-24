@@ -26,6 +26,15 @@ export const AdminSettings = () => {
   // Live State for Statuses
   const [orderStatuses, setOrderStatuses] = useState<any[]>([]);
 
+  // Live State for GSM Master
+  const [gsmList, setGsmList] = useState<any[]>([]);
+  const [newGsmValue, setNewGsmValue] = useState('');
+  const [newGsmLabel, setNewGsmLabel] = useState('');
+  const [showAddGsm, setShowAddGsm] = useState(false);
+  const [editingGsmId, setEditingGsmId] = useState<string | null>(null);
+  const [editGsmValue, setEditGsmValue] = useState('');
+  const [editGsmLabel, setEditGsmLabel] = useState('');
+
   useEffect(() => {
     if (tab === 'users') {
       fetchUsers();
@@ -33,8 +42,56 @@ export const AdminSettings = () => {
       fetchProducts();
     } else if (tab === 'masters') {
       fetchStatuses();
+      fetchGsmList();
     }
   }, [tab, searchQuery]);
+
+  const fetchGsmList = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/gsm?includeInactive=true`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setGsmList(await res.json());
+    } catch (e) {
+      console.error('Failed to fetch GSM list', e);
+    }
+  };
+
+  const handleAddGsm = async () => {
+    if (!newGsmValue.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/gsm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ value: parseInt(newGsmValue), label: newGsmLabel || null }),
+      });
+      if (res.ok) {
+        setNewGsmValue(''); setNewGsmLabel(''); setShowAddGsm(false);
+        fetchGsmList();
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleSaveGsm = async (id: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/gsm/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ value: parseInt(editGsmValue), label: editGsmLabel || null }),
+      });
+      if (res.ok) { setEditingGsmId(null); fetchGsmList(); }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleDeleteGsm = async (id: string) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/gsm/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      fetchGsmList();
+    } catch (e) { console.error(e); }
+  };
 
   const fetchStatuses = async () => {
     try {
@@ -501,7 +558,12 @@ export const AdminSettings = () => {
                     {editingVariant?.variantId === v.id ? (
                       <div style={{ padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                          <Input placeholder="GSM" type="number" value={editVariantData.gsm} onChange={e => setEditVariantData(d => ({ ...d, gsm: e.target.value }))} style={{ flex: 1 }} autoFocus />
+                          <select className="input-field" value={editVariantData.gsm} onChange={e => setEditVariantData(d => ({ ...d, gsm: e.target.value }))} style={{ flex: 1, fontSize: '0.85rem' }} autoFocus>
+                            <option value="">GSM...</option>
+                            {gsmList.filter((g: any) => g.isActive).map((g: any) => (
+                              <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                            ))}
+                          </select>
                           <Input placeholder="Size (e.g. 30x60)" value={editVariantData.size} onChange={e => setEditVariantData(d => ({ ...d, size: e.target.value }))} style={{ flex: 1 }} />
                         </div>
                         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -545,7 +607,12 @@ export const AdminSettings = () => {
                   addingVariantForProductId === product.id ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)', padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)' }}>
                       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                        <Input placeholder="GSM (e.g. 110)" type="number" value={newVariantGsm} onChange={e => setNewVariantGsm(e.target.value)} style={{ flex: 1 }} />
+                        <select className="input-field" value={newVariantGsm} onChange={e => setNewVariantGsm(e.target.value)} style={{ flex: 1, fontSize: '0.85rem' }}>
+                          <option value="">GSM...</option>
+                          {gsmList.filter((g: any) => g.isActive).map((g: any) => (
+                            <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                          ))}
+                        </select>
                         <Input placeholder="Size (e.g. 30x60)" value={newVariantSize} onChange={e => setNewVariantSize(e.target.value)} style={{ flex: 1 }} />
                       </div>
                       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -576,6 +643,56 @@ export const AdminSettings = () => {
 
         {tab === 'masters' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+
+            {/* GSM Master */}
+            <Card>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+                <h3 style={{ margin: 0 }}>GSM Values</h3>
+                {canManageCatalog && !showAddGsm && (
+                  <Button variant="primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => setShowAddGsm(true)}>+ Add</Button>
+                )}
+              </div>
+
+              {showAddGsm && (
+                <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+                  <Input type="number" placeholder="GSM value (e.g. 110)" value={newGsmValue} onChange={e => setNewGsmValue(e.target.value)} style={{ flex: '1 1 100px' }} autoFocus />
+                  <Input type="text" placeholder="Label (optional)" value={newGsmLabel} onChange={e => setNewGsmLabel(e.target.value)} style={{ flex: '2 1 150px' }} />
+                  <Button variant="outline" style={{ fontSize: '0.8rem' }} onClick={() => { setShowAddGsm(false); setNewGsmValue(''); setNewGsmLabel(''); }}>Cancel</Button>
+                  <Button variant="primary" style={{ fontSize: '0.8rem' }} onClick={handleAddGsm}>Save</Button>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                {gsmList.map((g: any) => (
+                  <div key={g.id} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', opacity: g.isActive ? 1 : 0.5 }}>
+                    {editingGsmId === g.id ? (
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                        <Input type="number" value={editGsmValue} onChange={e => setEditGsmValue(e.target.value)} style={{ flex: '1 1 80px' }} autoFocus />
+                        <Input type="text" value={editGsmLabel} onChange={e => setEditGsmLabel(e.target.value)} placeholder="Label (optional)" style={{ flex: '2 1 140px' }} />
+                        <Button variant="outline" style={{ fontSize: '0.8rem' }} onClick={() => setEditingGsmId(null)}>Cancel</Button>
+                        <Button variant="primary" style={{ fontSize: '0.8rem' }} onClick={() => handleSaveGsm(g.id)}>Save</Button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span style={{ fontWeight: 600 }}>{g.value} GSM</span>
+                          {g.label && <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginLeft: 'var(--space-2)' }}>{g.label}</span>}
+                          {!g.isActive && <span style={{ fontSize: '0.75rem', color: '#fa5252', marginLeft: 'var(--space-2)' }}>Disabled</span>}
+                        </div>
+                        {canManageCatalog && (
+                          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                            <button onClick={() => { setEditingGsmId(g.id); setEditGsmValue(String(g.value)); setEditGsmLabel(g.label || ''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', fontSize: '0.75rem', padding: '2px 4px' }}>✎</button>
+                            <button onClick={() => handleDeleteGsm(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '0.75rem', padding: '2px 4px' }}>✕</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {gsmList.length === 0 && <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>No GSM values configured yet.</p>}
+              </div>
+            </Card>
+
             <Card>
               <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>Order Statuses</h3>
               {orderStatuses.length === 0 ? (

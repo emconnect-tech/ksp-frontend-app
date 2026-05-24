@@ -18,6 +18,7 @@ export const StockIn = () => {
   
   const [entries, setEntries] = useState<any[]>([]);
   const [productsList, setProductsList] = useState<any[]>([]);
+  const [gsmList, setGsmList] = useState<any[]>([]);
   
   const { token } = useAuth();
   const { canDelete, canEdit } = usePermissions();
@@ -57,6 +58,9 @@ export const StockIn = () => {
       
       const prodRes = await fetch(`${API_BASE_URL}/api/v1/products`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (prodRes.ok) setProductsList(await prodRes.json());
+
+      const gsmRes = await fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (gsmRes.ok) setGsmList(await gsmRes.json());
     } catch (e) {
       console.error('Failed to fetch data', e);
     }
@@ -195,7 +199,16 @@ export const StockIn = () => {
               <div className="grid-layout">
                 <div>
                   <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-                  <Input type="number" value={editData.gsm} onChange={e => setEditData({...editData, gsm: e.target.value})} required min="1" readOnly={!!editData.productVariantId} style={editData.productVariantId ? { background: 'var(--color-surface)', color: 'var(--color-text-muted)' } : {}} />
+                  {editData.productVariantId ? (
+                    <Input type="text" value={editData.gsm ? `${editData.gsm} GSM` : ''} readOnly style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }} />
+                  ) : (
+                    <select className="input-field" value={editData.gsm} onChange={e => setEditData({...editData, gsm: e.target.value})} required>
+                      <option value="">Select GSM...</option>
+                      {gsmList.map((g: any) => (
+                        <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Size</label>
@@ -385,7 +398,16 @@ export const StockIn = () => {
             <div className="grid-layout">
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-                <Input type="number" placeholder="e.g. 110" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required min="1" readOnly={!!formData.productVariantId} style={formData.productVariantId ? { background: 'var(--color-surface)', color: 'var(--color-text-muted)' } : {}} />
+                {formData.productVariantId ? (
+                  <Input type="text" value={formData.gsm ? `${formData.gsm} GSM` : ''} readOnly style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }} />
+                ) : (
+                  <select className="input-field" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required>
+                    <option value="">Select GSM...</option>
+                    {gsmList.map((g: any) => (
+                      <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Size</label>

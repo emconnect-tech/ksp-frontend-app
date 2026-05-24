@@ -18,6 +18,7 @@ export const RawMaterials = () => {
   const [editRollWeights, setEditRollWeights] = useState<Record<number, string>>({});
   const [entries, setEntries] = useState<any[]>([]);
   const [rollWeights, setRollWeights] = useState<Record<number, string>>({});
+  const [gsmList, setGsmList] = useState<any[]>([]);
 
   const { token } = useAuth();
   const { canDelete, canEdit } = usePermissions();
@@ -59,7 +60,13 @@ export const RawMaterials = () => {
     }
   };
 
-  useEffect(() => { fetchEntries(); }, []);
+  useEffect(() => {
+    fetchEntries();
+    fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(setGsmList)
+      .catch(() => {});
+  }, []);
 
   const handleViewDetails = (entry: any) => {
     setSelectedEntry(entry);
@@ -222,7 +229,12 @@ export const RawMaterials = () => {
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-                <Input type="number" value={editData.gsm} onChange={e => setEditData({...editData, gsm: e.target.value})} required min="1" />
+                <select className="input-field" value={editData.gsm} onChange={e => setEditData({...editData, gsm: e.target.value})} required>
+                  <option value="">Select GSM...</option>
+                  {gsmList.map((g: any) => (
+                    <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
@@ -369,7 +381,12 @@ export const RawMaterials = () => {
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-              <Input type="number" placeholder="Enter GSM (e.g. 110)" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required min="1" />
+              <select className="input-field" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required>
+                <option value="">Select GSM...</option>
+                {gsmList.map((g: any) => (
+                  <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
