@@ -11,7 +11,7 @@ import { config } from '../config';
 
 export const RawMaterials = () => {
   const [direction, setDirection] = useState<'in' | 'out'>('in');
-  const [tab, setTab] = useState('add');
+  const [tab, setTab] = useState('history');
 
   // --- IN state ---
   const [view, setView] = useState<'list' | 'details'>('list');
@@ -95,7 +95,7 @@ export const RawMaterials = () => {
 
   const handleDirectionChange = (d: string) => {
     setDirection(d as 'in' | 'out');
-    setTab('add');
+    setTab('history');
     setView('list');
     setOutView('list');
   };
@@ -233,7 +233,10 @@ export const RawMaterials = () => {
     const rollCount = parseInt(inFormData.rolls) || 0;
     return (
       <Card>
-        <h2 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1.25rem' }}>New Raw Material — In</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
+          <h2 style={{ margin: 0, fontSize: '1.25rem' }}>New Raw Material — In</h2>
+          <button onClick={() => setTab('history')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>✕ Cancel</button>
+        </div>
         <form onSubmit={handleInSubmit}>
           <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
             {variantDropdown(inFormData.rawMaterialTypeVariantId, handleInVariantChange)}
@@ -405,7 +408,10 @@ export const RawMaterials = () => {
 
   const renderOutAdd = () => (
     <Card>
-      <h2 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1.25rem' }}>Raw Material — Out (Consumed)</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
+        <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Raw Material — Out (Consumed)</h2>
+        <button onClick={() => setTab('history')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>✕ Cancel</button>
+      </div>
       <form onSubmit={handleOutSubmit}>
         <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
           {variantDropdown(outFormData.rawMaterialTypeVariantId, handleOutVariantChange)}
@@ -557,19 +563,20 @@ export const RawMaterials = () => {
             onChange={handleDirectionChange}
           />
 
-          <div style={{ marginTop: 'var(--space-4)' }}>
-            <SegmentedControl
-              options={[{ label: 'Add Entry', value: 'add' }, { label: 'History', value: 'history' }]}
-              value={tab}
-              onChange={setTab}
-            />
-          </div>
-
           <div style={{ marginTop: 'var(--space-6)' }}>
-            {direction === 'in'
-              ? (tab === 'add' ? renderInAdd() : renderInHistory())
-              : (tab === 'add' ? renderOutAdd() : renderOutHistory())
-            }
+            {tab === 'add' ? (
+              direction === 'in' ? renderInAdd() : renderOutAdd()
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>History</h3>
+                  <Button variant="primary" style={{ padding: '6px 16px', fontSize: '0.85rem' }} onClick={() => setTab('add')}>
+                    + Add Entry
+                  </Button>
+                </div>
+                {direction === 'in' ? renderInHistory() : renderOutHistory()}
+              </>
+            )}
           </div>
         </>
       )}
