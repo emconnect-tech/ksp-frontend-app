@@ -10,21 +10,35 @@ import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
 
 export const StockIn = () => {
+  const [direction, setDirection] = useState<'in' | 'out'>('in');
   const [tab, setTab] = useState('add');
   const [view, setView] = useState<'list' | 'details'>('list');
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
-  
+
   const [entries, setEntries] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [orderView, setOrderView] = useState<'list' | 'details'>('list');
   const [productsList, setProductsList] = useState<any[]>([]);
   const [gsmList, setGsmList] = useState<any[]>([]);
-  
+
   const { token } = useAuth();
   const { canDelete, canEdit } = usePermissions();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const handleDirectionChange = (d: string) => {
+    setDirection(d as 'in' | 'out');
+    setTab('add');
+    setView('list');
+    setOrderView('list');
+    setSelectedEntry(null);
+    setSelectedOrder(null);
+    setIsEditing(false);
+  };
 
   const handleDeleteEntry = async () => {
     if (!confirmDeleteId) return;
@@ -49,18 +63,21 @@ export const StockIn = () => {
         { id: '1', entryDate: '2026-05-02T10:00:00', type: 'Green Net - Planet Agro', gsm: 110, size: '30x60', noOfBundles: 5, weightKg: 125.0, isActive: true },
         { id: '2', entryDate: '2026-05-01T10:00:00', type: 'Tarpaulin', gsm: 90, size: '40x40', noOfBundles: 10, weightKg: 200.0, isActive: true },
       ]);
+      setOrders([]);
       setProductsList([{ id: 'mock-prod-1', name: 'Green Net', variants: [{ id: 'mock-var-1', size: '110GSM' }] }]);
       return;
     }
     try {
-      const stockRes = await fetch(`${API_BASE_URL}/api/v1/stock-in`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const [stockRes, prodRes, gsmRes, ordersRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/v1/stock-in`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/products`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/orders`, { headers: { 'Authorization': `Bearer ${token}` } }),
+      ]);
       if (stockRes.ok) setEntries(await stockRes.json());
-      
-      const prodRes = await fetch(`${API_BASE_URL}/api/v1/products`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (prodRes.ok) setProductsList(await prodRes.json());
-
-      const gsmRes = await fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (gsmRes.ok) setGsmList(await gsmRes.json());
+      if (ordersRes.ok) setOrders(await ordersRes.json());
     } catch (e) {
       console.error('Failed to fetch data', e);
     }
@@ -129,34 +146,172 @@ export const StockIn = () => {
     }
   };
 
-  const renderHistoryList = () => {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-        {entries.map((entry) => (
-          <Card 
-            key={entry.id} 
-            onClick={() => handleViewDetails(entry)}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}
-          >
-            <div>
-              <p style={{ margin: 0, fontWeight: 600, fontSize: '1.1rem' }}>{entry.type || `Variant ${entry.productVariantId?.substring(0,6)}`}</p>
-              <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                {entry.noOfBundles} Bundles ({entry.weightKg}kg)
-              </p>
-              <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                {new Date(entry.entryDate).toLocaleDateString()} • {entry.gsm} GSM • {entry.size}
-              </p>
-            </div>
-            <Badge status="completed">Logged</Badge>
-          </Card>
-        ))}
-      </div>
-    );
+  const [formData, setFormData] = useState({
+    productVariantId: '',
+    entryDate: new Date().toISOString().split('T')[0] + 'T00:00:00',
+    gsm: '',
+    size: '',
+    bundles: '',
+    weightKg: '',
+    notes: ''
+  });
+
+  const findVariant = (variantId: string) => {
+    for (const p of productsList) {
+      const v = p.variants?.find((v: any) => v.id === variantId);
+      if (v) return v;
+    }
+    return null;
   };
+
+  const handleVariantChange = (variantId: string) => {
+    const variant = findVariant(variantId);
+    if (variant) {
+      setFormData(prev => ({ ...prev, productVariantId: variantId, gsm: String(variant.gsm ?? ''), size: variant.size ?? '' }));
+    } else {
+      setFormData(prev => ({ ...prev, productVariantId: variantId }));
+    }
+  };
+
+  const handleEditVariantChange = (variantId: string) => {
+    const variant = findVariant(variantId);
+    if (variant) {
+      setEditData((prev: any) => ({ ...prev, productVariantId: variantId, gsm: String(variant.gsm ?? ''), size: variant.size ?? '' }));
+    } else {
+      setEditData((prev: any) => ({ ...prev, productVariantId: variantId }));
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (config.USE_MOCK_API) {
+      setTab('history');
+      return;
+    }
+
+    const payload = {
+      productVariantId: formData.productVariantId,
+      entryDate: formData.entryDate,
+      gsm: parseInt(formData.gsm),
+      size: formData.size,
+      noOfBundles: parseInt(formData.bundles),
+      weightKg: parseFloat(formData.weightKg),
+      notes: formData.notes
+    };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/stock-in`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        setFormData({
+          productVariantId: '',
+          entryDate: new Date().toISOString().split('T')[0] + 'T00:00:00',
+          gsm: '', size: '', bundles: '', weightKg: '', notes: ''
+        });
+        fetchData();
+        setTab('history');
+      } else {
+        alert('Failed to save stock-in entry');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to save stock-in entry');
+    }
+  };
+
+  const renderAddForm = () => (
+    <Card>
+      <h2 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1.25rem' }}>
+        Finished Good Entry
+      </h2>
+      <form onSubmit={handleSubmit}>
+        <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Stock Type / Product</label>
+            <select className="input-field" value={formData.productVariantId} onChange={e => handleVariantChange(e.target.value)} required>
+              <option value="" disabled>Select Product Variant...</option>
+              {productsList.map(p =>
+                p.variants?.map((v: any) => (
+                  <option key={v.id} value={v.id}>{p.name}{v.gsm ? ` - ${v.gsm} GSM` : ''}{v.size ? ` • ${v.size}` : ''}</option>
+                ))
+              )}
+            </select>
+          </div>
+          <div className="grid-layout">
+            <div>
+              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
+              {formData.productVariantId ? (
+                <Input type="text" value={formData.gsm ? `${formData.gsm} GSM` : ''} readOnly style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }} />
+              ) : (
+                <select className="input-field" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required>
+                  <option value="">Select GSM...</option>
+                  {gsmList.map((g: any) => (
+                    <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Size</label>
+              <Input type="text" placeholder="e.g. 30x60" value={formData.size} onChange={e => setFormData({...formData, size: e.target.value})} readOnly={!!formData.productVariantId} style={formData.productVariantId ? { background: 'var(--color-surface)', color: 'var(--color-text-muted)' } : {}} />
+            </div>
+          </div>
+          <div className="grid-layout">
+            <div>
+              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Bundles</label>
+              <Input type="number" placeholder="Count" min="1" value={formData.bundles} onChange={e => setFormData({...formData, bundles: e.target.value})} required />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Weight (KG)</label>
+              <Input type="number" step="0.01" placeholder="Total KG" value={formData.weightKg} onChange={e => setFormData({...formData, weightKg: e.target.value})} required min="0" />
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notes (Optional)</label>
+            <textarea className="input-field" rows={3} placeholder="Auditor notes..." style={{ resize: 'vertical' }} value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
+          </div>
+        </div>
+        <Button type="submit" variant="primary" style={{ width: '100%', marginTop: 'var(--space-6)' }}>
+          Save Stock-In
+        </Button>
+      </form>
+    </Card>
+  );
+
+  const renderHistoryList = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      {entries.length === 0 && (
+        <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 'var(--space-8)' }}>No stock-in entries yet.</p>
+      )}
+      {entries.map((entry) => (
+        <Card
+          key={entry.id}
+          onClick={() => handleViewDetails(entry)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}
+        >
+          <div>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: '1.1rem' }}>{entry.type || `Variant ${entry.productVariantId?.substring(0,6)}`}</p>
+            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+              {entry.noOfBundles} Bundles ({entry.weightKg}kg)
+            </p>
+            <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+              {new Date(entry.entryDate).toLocaleDateString()} • {entry.gsm} GSM • {entry.size}
+            </p>
+          </div>
+          <Badge status="completed">In</Badge>
+        </Card>
+      ))}
+    </div>
+  );
 
   const renderDetails = () => {
     if (!selectedEntry) return null;
-
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -169,19 +324,14 @@ export const StockIn = () => {
           {!isEditing && (
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
               {canEdit && (
-                <Button variant="outline" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={handleStartEdit}>
-                  Edit
-                </Button>
+                <Button variant="outline" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={handleStartEdit}>Edit</Button>
               )}
               {canDelete && (
-                <Button variant="outline" style={{ padding: '4px 12px', fontSize: '0.8rem', color: '#fa5252', borderColor: '#fa5252' }} onClick={() => setConfirmDeleteId(selectedEntry.id)}>
-                  Delete
-                </Button>
+                <Button variant="outline" style={{ padding: '4px 12px', fontSize: '0.8rem', color: '#fa5252', borderColor: '#fa5252' }} onClick={() => setConfirmDeleteId(selectedEntry.id)}>Delete</Button>
               )}
             </div>
           )}
         </div>
-
         <Card style={{ padding: 'var(--space-6)' }}>
           {isEditing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -251,7 +401,7 @@ export const StockIn = () => {
                 </div>
                 <div>
                   <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Status</label>
-                  <Badge status="completed">Logged</Badge>
+                  <Badge status="completed">In</Badge>
                 </div>
               </div>
               <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 0 }} />
@@ -284,7 +434,6 @@ export const StockIn = () => {
             </div>
           )}
         </Card>
-
         {!isEditing && (
           <Button variant="outline" style={{ width: '100%' }} onClick={() => setView('list')}>
             Back to History
@@ -294,156 +443,136 @@ export const StockIn = () => {
     );
   };
 
-  const [formData, setFormData] = useState({
-    productVariantId: '',
-    entryDate: new Date().toISOString().split('T')[0] + 'T00:00:00',
-    gsm: '',
-    size: '',
-    bundles: '',
-    weightKg: '',
-    notes: ''
-  });
+  const renderOrdersList = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <p style={{ margin: '0 0 var(--space-2) 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+        Orders represent finished goods dispatched from stock.
+      </p>
+      {orders.length === 0 && (
+        <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 'var(--space-8)' }}>No orders found.</p>
+      )}
+      {orders.map((order: any) => {
+        const totalBundles = order.items?.reduce((sum: number, i: any) => sum + (i.noOfBundles || 0), 0) ?? 0;
+        return (
+          <Card
+            key={order.id}
+            onClick={() => { setSelectedOrder(order); setOrderView('details'); }}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}
+          >
+            <div>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: '1.1rem' }}>{order.orderNumber || `Order ${order.id?.substring(0,6)}`}</p>
+              <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                {totalBundles} Bundles{order.totalWeightKg ? ` • ${order.totalWeightKg}kg` : ''}
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : '—'} • {order.statusName || 'Pending'}
+              </p>
+            </div>
+            <Badge status="ongoing">Out</Badge>
+          </Card>
+        );
+      })}
+    </div>
+  );
 
-  const findVariant = (variantId: string) => {
-    for (const p of productsList) {
-      const v = p.variants?.find((v: any) => v.id === variantId);
-      if (v) return v;
-    }
-    return null;
-  };
-
-  const handleVariantChange = (variantId: string) => {
-    const variant = findVariant(variantId);
-    if (variant) {
-      setFormData(prev => ({ ...prev, productVariantId: variantId, gsm: String(variant.gsm ?? ''), size: variant.size ?? '' }));
-    } else {
-      setFormData(prev => ({ ...prev, productVariantId: variantId }));
-    }
-  };
-
-  const handleEditVariantChange = (variantId: string) => {
-    const variant = findVariant(variantId);
-    if (variant) {
-      setEditData((prev: any) => ({ ...prev, productVariantId: variantId, gsm: String(variant.gsm ?? ''), size: variant.size ?? '' }));
-    } else {
-      setEditData((prev: any) => ({ ...prev, productVariantId: variantId }));
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (config.USE_MOCK_API) {
-      setTab('history');
-      return;
-    }
-    
-    const payload = {
-      productVariantId: formData.productVariantId,
-      entryDate: formData.entryDate,
-      gsm: parseInt(formData.gsm),
-      size: formData.size,
-      noOfBundles: parseInt(formData.bundles),
-      weightKg: parseFloat(formData.weightKg),
-      notes: formData.notes
-    };
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/stock-in`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        setFormData({
-          productVariantId: '',
-          entryDate: new Date().toISOString().split('T')[0] + 'T00:00:00',
-          gsm: '', size: '', bundles: '', weightKg: '', notes: ''
-        });
-        fetchData();
-        setTab('history');
-      } else {
-        alert('Failed to save stock-in entry');
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Failed to save stock-in entry');
-    }
-  };
-
-  const renderAddForm = () => {
+  const renderOrderDetails = () => {
+    if (!selectedOrder) return null;
+    const totalBundles = selectedOrder.items?.reduce((sum: number, i: any) => sum + (i.noOfBundles || 0), 0) ?? 0;
     return (
-      <Card>
-        <h2 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1.25rem' }}>
-          Finished Good Entry
-        </h2>
-        
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-            
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <button onClick={() => { setOrderView('list'); setSelectedOrder(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+            <ArrowLeft size={24} />
+          </button>
+          <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Order Details</h2>
+        </div>
+        <Card style={{ padding: 'var(--space-6)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
             <div>
-              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Stock Type / Product</label>
-              <select className="input-field" value={formData.productVariantId} onChange={e => handleVariantChange(e.target.value)} required>
-                <option value="" disabled>Select Product Variant...</option>
-                {productsList.map(p =>
-                  p.variants?.map((v: any) => (
-                    <option key={v.id} value={v.id}>{p.name}{v.gsm ? ` - ${v.gsm} GSM` : ''}{v.size ? ` • ${v.size}` : ''}</option>
-                  ))
-                )}
-              </select>
+              <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>Order Number</label>
+              <div style={{ fontWeight: 600, fontSize: '1.1rem', color: 'var(--color-primary)' }}>{selectedOrder.orderNumber || `#${selectedOrder.id?.substring(0,8)}`}</div>
             </div>
-
-            <div className="grid-layout">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-                {formData.productVariantId ? (
-                  <Input type="text" value={formData.gsm ? `${formData.gsm} GSM` : ''} readOnly style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }} />
-                ) : (
-                  <select className="input-field" value={formData.gsm} onChange={e => setFormData({...formData, gsm: e.target.value})} required>
-                    <option value="">Select GSM...</option>
-                    {gsmList.map((g: any) => (
-                      <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Date</label>
+                <div style={{ fontWeight: 600 }}>{selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleDateString() : '—'}</div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Status</label>
+                <Badge status="ongoing">{selectedOrder.statusName || 'Pending'}</Badge>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Total Bundles</label>
+                <div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{totalBundles}</div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Total Weight</label>
+                <div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedOrder.totalWeightKg ? `${selectedOrder.totalWeightKg} KG` : '—'}</div>
+              </div>
+            </div>
+            {selectedOrder.items?.length > 0 && (
+              <>
+                <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 0 }} />
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-3)' }}>Items</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    {selectedOrder.items.map((item: any, idx: number) => (
+                      <div key={item.id || idx} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                            {item.gsm ? `${item.gsm} GSM` : '—'}{item.size ? ` • ${item.size}` : ''}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                            {item.noOfBundles ? `${item.noOfBundles} bundles` : ''}{item.weightKg ? ` • ${item.weightKg}kg` : ''}
+                          </div>
+                        </div>
+                        {item.lineTotal != null && (
+                          <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>₹{item.lineTotal.toLocaleString()}</div>
+                        )}
+                      </div>
                     ))}
-                  </select>
-                )}
-              </div>
+                  </div>
+                </div>
+              </>
+            )}
+            {selectedOrder.notes && (
               <div>
-                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Size</label>
-                <Input type="text" placeholder="e.g. 30x60" value={formData.size} onChange={e => setFormData({...formData, size: e.target.value})} readOnly={!!formData.productVariantId} style={formData.productVariantId ? { background: 'var(--color-surface)', color: 'var(--color-text-muted)' } : {}} />
+                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Notes</label>
+                <div style={{ fontSize: '0.9rem', marginTop: 'var(--space-1)', lineHeight: 1.5 }}>{selectedOrder.notes}</div>
               </div>
-            </div>
-  
-            <div className="grid-layout">
-              <div>
-                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Bundles</label>
-                <Input type="number" placeholder="Count" min="1" value={formData.bundles} onChange={e => setFormData({...formData, bundles: e.target.value})} required />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Weight (KG)</label>
-                <Input type="number" step="0.01" placeholder="Total KG" value={formData.weightKg} onChange={e => setFormData({...formData, weightKg: e.target.value})} required min="0" />
-              </div>
-            </div>
-  
-            <div>
-              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notes (Optional)</label>
-              <textarea 
-                className="input-field" 
-                rows={3} 
-                placeholder="Auditor notes..."
-                style={{ resize: 'vertical' }}
-                value={formData.notes}
-                onChange={e => setFormData({...formData, notes: e.target.value})}
-              ></textarea>
-            </div>
+            )}
           </div>
-  
-          <Button type="submit" variant="primary" style={{ width: '100%', marginTop: 'var(--space-6)' }}>
-            Save Stock-In
-          </Button>
-        </form>
-      </Card>
+        </Card>
+        <Button variant="outline" style={{ width: '100%' }} onClick={() => { setOrderView('list'); setSelectedOrder(null); }}>
+          Back to Orders
+        </Button>
+      </div>
+    );
+  };
+
+  const renderStockOut = () => {
+    if (orderView === 'details') return renderOrderDetails();
+    return renderOrdersList();
+  };
+
+  const renderStockIn = () => {
+    if (view === 'details') return renderDetails();
+    return (
+      <>
+        <SegmentedControl
+          options={[
+            { label: 'Add Stock-In', value: 'add' },
+            { label: 'History', value: 'history' }
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+        <div style={{ marginTop: 'var(--space-6)' }}>
+          {tab === 'add' ? renderAddForm() : renderHistoryList()}
+        </div>
+      </>
     );
   };
 
@@ -464,21 +593,18 @@ export const StockIn = () => {
         </div>
       )}
 
-      {view === 'details' ? renderDetails() : (
-        <>
-          <SegmentedControl 
-            options={[
-              { label: 'Add Stock-In', value: 'add' },
-              { label: 'History', value: 'history' }
-            ]} 
-            value={tab} 
-            onChange={setTab} 
-          />
-          <div style={{ marginTop: 'var(--space-6)' }}>
-            {tab === 'add' ? renderAddForm() : renderHistoryList()}
-          </div>
-        </>
-      )}
+      <SegmentedControl
+        options={[
+          { label: 'Stock In', value: 'in' },
+          { label: 'Stock Out', value: 'out' },
+        ]}
+        value={direction}
+        onChange={handleDirectionChange}
+      />
+
+      <div style={{ marginTop: 'var(--space-4)' }}>
+        {direction === 'in' ? renderStockIn() : renderStockOut()}
+      </div>
     </div>
   );
 };
