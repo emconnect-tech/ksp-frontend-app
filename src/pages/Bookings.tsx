@@ -168,14 +168,27 @@ export const Bookings = () => {
   const extraFileInputRef = useRef<HTMLInputElement>(null);
   const [addPhotoContext, setAddPhotoContext] = useState<{ orderId: string; attachmentType: string } | null>(null);
 
+  const ALLOC_KEY = 'ksp_stock_alloc';
+
+  const getAllocations = (): Record<string, string> =>
+    JSON.parse(localStorage.getItem(ALLOC_KEY) || '{}');
+
+  const saveAllocations = (allocs: Record<string, string>) =>
+    localStorage.setItem(ALLOC_KEY, JSON.stringify(allocs));
+
   const openWeightsModal = async (order: any) => {
     setActiveOrderId(order.id);
-    setWeightsFormData(order.itemsList.map((item: any) => ({
-      ...item,
-      weights: Array.isArray(item.weights) && item.weights.length === item.qty
+    const allocs = getAllocations();
+    setWeightsFormData(order.itemsList.map((item: any) => {
+      const qty = item.qty;
+      const weights = Array.isArray(item.weights) && item.weights.length === qty
         ? [...item.weights]
-        : Array(item.qty).fill('')
-    })));
+        : Array(qty).fill('');
+      const stockKeys = Array(qty).fill('').map((_: any, i: number) =>
+        allocs[`${order.id}:${item.variantId}:${i}`] || ''
+      );
+      return { ...item, weights, stockKeys };
+    }));
     setManualBundle({});
     if (!config.USE_MOCK_API) {
       try {
@@ -206,45 +219,76 @@ export const Bookings = () => {
 
   const handleSaveWeights = async () => {
     if (!activeOrderId) return;
-    
     const orderToUpdate = orders.find(o => o.id === activeOrderId);
     if (!orderToUpdate) return;
-    
-    try {
-      const updatedItemsList = weightsFormData;
 
+    // Persist stock allocations: clear old ones for this order, write new ones
+    const allocs = getAllocations();
+    Object.keys(allocs).forEach(k => { if (k.startsWith(activeOrderId + ':')) delete allocs[k]; });
+    weightsFormData.forEach(item => {
+      (item.stockKeys || []).forEach((key: string, i: number) => {
+        if (key) allocs[`${activeOrderId}:${item.variantId}:${i}`] = key;
+      });
+    });
+    saveAllocations(allocs);
+
+    // Separate tagged (has weight) vs untagged bundles
+    const taggedItems = weightsFormData.map(item => ({
+      ...item,
+      weights: item.weights.map((w: any) => parseFloat(w) > 0 ? w : null)
+    }));
+    const untaggedCounts = weightsFormData.map(item =>
+      item.weights.filter((w: any) => !(parseFloat(w) > 0)).length
+    );
+    const hasUntagged = untaggedCounts.some(c => c > 0);
+
+    try {
       const payload = {
         customerId: orderToUpdate.customerId,
-        items: updatedItemsList.map(i => {
+        items: weightsFormData.map(i => {
           const itemWt = i.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0);
-          return {
-            productVariantId: i.variantId,
-            weightKg: itemWt,
-            bundleWeights: i.weights.join(',')
-          };
+          return { productVariantId: i.variantId, weightKg: itemWt, bundleWeights: i.weights.join(',') };
         })
       };
-
       await updateOrderWeightsAPI(activeOrderId, payload);
-      
-      const grandTotalWt = updatedItemsList.reduce((sum, item) => sum + item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0), 0);
-      const updatedOrder = {
-        totalWeight: `${grandTotalWt} kg`,
-        itemsList: updatedItemsList,
-        phase: 'Quotation Generated',
-        action: 'Upload Bill'
-      };
-      setOrders(prev => prev.map(order => {
-        if (order.id !== activeOrderId) return order;
-        return { ...order, ...updatedOrder };
-      }));
-      if (selectedOrder?.id === activeOrderId) {
-        setSelectedOrder((prev: any) => ({ ...prev, ...updatedOrder }));
+
+      const grandTotalWt = weightsFormData.reduce((sum, item) =>
+        sum + item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0), 0);
+      const updatedOrder = { totalWeight: `${grandTotalWt} kg`, itemsList: weightsFormData, phase: 'Quotation Generated', action: 'Upload Bill' };
+      setOrders(prev => prev.map(o => o.id !== activeOrderId ? o : { ...o, ...updatedOrder }));
+      if (selectedOrder?.id === activeOrderId) setSelectedOrder((prev: any) => ({ ...prev, ...updatedOrder }));
+
+      // Backorder for untagged bundles
+      if (hasUntagged) {
+        const total = untaggedCounts.reduce((s, c) => s + c, 0);
+        const confirmed = window.confirm(
+          `${total} bundle(s) have no weight assigned.\n\nCreate a pending backorder for the untagged bundles?`
+        );
+        if (confirmed) {
+          const backorderItems = weightsFormData
+            .map((item, idx) => ({ variantId: item.variantId, qty: untaggedCounts[idx], price: item.price || 0 }))
+            .filter(i => i.qty > 0);
+          const backorderPayload = {
+            customerId: orderToUpdate.customerId,
+            notes: `Backorder from #${orderToUpdate.orderNumber || activeOrderId}`,
+            items: backorderItems.map(i => ({ productVariantId: i.variantId, noOfBundles: i.qty, unitRate: i.price, lineTotal: 0 }))
+          };
+          const resp = await createOrderAPI(backorderPayload);
+          const newOrder = {
+            id: resp.id, orderNumber: resp.orderNumber, customerId: orderToUpdate.customerId,
+            customer: orderToUpdate.customer, items: backorderItems.reduce((s, i) => s + i.qty, 0),
+            totalWeight: 'Pending', amount: '₹0', phase: 'Order Created', action: 'Add Weights',
+            date: new Date().toISOString().split('T')[0],
+            itemsList: backorderItems.map(i => ({ variantId: i.variantId, name: i.variantId, qty: i.qty, weights: Array(i.qty).fill(''), price: i.price }))
+          };
+          setOrders(prev => [newOrder, ...prev]);
+        }
       }
-    } catch(e) {
+    } catch (e) {
       console.error(e);
+      alert('Failed to save weights');
     }
-    
+
     setShowAddWeightsModal(false);
     setActiveOrderId(null);
   };
@@ -1232,30 +1276,51 @@ export const Bookings = () => {
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-              {weightsFormData.map((item, itemIdx) => (
+              {(() => {
+                // Build set of stock keys consumed by OTHER orders (from localStorage)
+                const allocs = getAllocations();
+                const consumedByOthers = new Set(
+                  Object.entries(allocs)
+                    .filter(([k]) => !k.startsWith((activeOrderId || '') + ':'))
+                    .map(([, v]) => v)
+                );
+                // Build set of stock keys already selected within THIS modal (across all bundles)
+                const selectedInModal = new Set(
+                  weightsFormData.flatMap(item => (item.stockKeys || []).filter(Boolean))
+                );
+                return weightsFormData.map((item, itemIdx) => (
                 <div key={itemIdx}>
                   <h4 style={{ margin: '0 0 var(--space-3) 0', fontSize: '0.9rem' }}>{item.name} ({item.qty} Bundles)</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                     {item.weights.map((w: any, wIdx: number) => {
                       const key = `${itemIdx}-${wIdx}`;
                       const isManual = manualBundle[key];
+                      const currentStockKey = (item.stockKeys || [])[wIdx] || '';
                       return (
                         <div key={wIdx} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                           <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-primary)', minWidth: '28px' }}>#{wIdx + 1}</span>
                           {stockInEntries.length > 0 && !isManual ? (
                             <select
                               className="input-field"
-                              value={w || ''}
+                              value={currentStockKey || ''}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 if (val === '__manual__') {
                                   setManualBundle(prev => ({ ...prev, [key]: true }));
-                                  const newForm = [...weightsFormData];
+                                  const newForm = weightsFormData.map(it => ({ ...it, weights: [...it.weights], stockKeys: [...(it.stockKeys || [])] }));
                                   newForm[itemIdx].weights[wIdx] = '';
+                                  newForm[itemIdx].stockKeys[wIdx] = '';
+                                  setWeightsFormData(newForm);
+                                } else if (val) {
+                                  const [weight, stockKey] = val.split('|');
+                                  const newForm = weightsFormData.map(it => ({ ...it, weights: [...it.weights], stockKeys: [...(it.stockKeys || Array(it.qty).fill(''))] }));
+                                  newForm[itemIdx].weights[wIdx] = weight;
+                                  newForm[itemIdx].stockKeys[wIdx] = stockKey;
                                   setWeightsFormData(newForm);
                                 } else {
-                                  const newForm = [...weightsFormData];
-                                  newForm[itemIdx].weights[wIdx] = val;
+                                  const newForm = weightsFormData.map(it => ({ ...it, weights: [...it.weights], stockKeys: [...(it.stockKeys || [])] }));
+                                  newForm[itemIdx].weights[wIdx] = '';
+                                  newForm[itemIdx].stockKeys[wIdx] = '';
                                   setWeightsFormData(newForm);
                                 }
                               }}
@@ -1266,17 +1331,25 @@ export const Bookings = () => {
                                 const label = entry.type || entry.productVariantId?.substring(0, 6) || 'Stock';
                                 const date = new Date(entry.entryDate).toLocaleDateString();
                                 if (entry.bundleWeights) {
-                                  return entry.bundleWeights.split(',').map((w: string, i: number) => (
-                                    <option key={`${entry.id}-${i}`} value={w.trim()}>
-                                      {w.trim()} kg — {label} bundle #{i + 1} ({date})
-                                    </option>
-                                  ));
+                                  return entry.bundleWeights.split(',').map((bw: string, i: number) => {
+                                    const stockKey = `${entry.id}:${i}`;
+                                    const isConsumed = (consumedByOthers.has(stockKey) || selectedInModal.has(stockKey)) && currentStockKey !== stockKey;
+                                    if (isConsumed) return null;
+                                    return (
+                                      <option key={stockKey} value={`${bw.trim()}|${stockKey}`}>
+                                        {bw.trim()} kg — {label} #{i + 1} ({date})
+                                      </option>
+                                    );
+                                  }).filter(Boolean);
                                 }
+                                const stockKey = `${entry.id}:avg`;
+                                const isConsumed = (consumedByOthers.has(stockKey) || selectedInModal.has(stockKey)) && currentStockKey !== stockKey;
+                                if (isConsumed) return null;
                                 const perBundle = entry.noOfBundles > 0
                                   ? (entry.weightKg / entry.noOfBundles).toFixed(2)
                                   : entry.weightKg;
                                 return (
-                                  <option key={entry.id} value={perBundle}>
+                                  <option key={stockKey} value={`${perBundle}|${stockKey}`}>
                                     {perBundle} kg — {label} ({date})
                                   </option>
                                 );
@@ -1291,7 +1364,7 @@ export const Bookings = () => {
                               style={{ flex: 1, height: '36px' }}
                               value={w}
                               onChange={(e) => {
-                                const newForm = [...weightsFormData];
+                                const newForm = weightsFormData.map(it => ({ ...it, weights: [...it.weights] }));
                                 newForm[itemIdx].weights[wIdx] = e.target.value;
                                 setWeightsFormData(newForm);
                               }}
@@ -1315,7 +1388,8 @@ export const Bookings = () => {
                     })}
                   </div>
                 </div>
-              ))}
+              ));
+              })()}
             </div>
 
             <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-6)' }}>
