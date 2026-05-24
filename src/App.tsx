@@ -9,6 +9,7 @@ import { AdminSettings } from './pages/AdminSettings';
 import { Customers } from './pages/Customers';
 import { Reports } from './pages/Reports';
 import { AuthProvider } from './contexts/AuthContext';
+import { OrgProvider } from './contexts/OrgContext';
 import { ProtectedRoute, PublicRoute } from './components/auth/RouteGuards';
 import { PendingApproval } from './pages/PendingApproval';
 import { Suspended } from './pages/Suspended';
@@ -16,6 +17,7 @@ import { Suspended } from './pages/Suspended';
 function App() {
   return (
     <AuthProvider>
+      <OrgProvider>
       <BrowserRouter>
         <Routes>
           {/* Public Routes (Redirect to dashboard if already logged in) */}
@@ -44,6 +46,7 @@ function App() {
 
         </Routes>
       </BrowserRouter>
+      </OrgProvider>
     </AuthProvider>
   );
 }

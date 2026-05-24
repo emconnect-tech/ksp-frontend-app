@@ -1,5 +1,6 @@
 import { Bell, Search, LogOut } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrg } from '../../contexts/OrgContext';
 import { useNavigate } from 'react-router-dom';
 
 type TopNavProps = {
@@ -8,6 +9,7 @@ type TopNavProps = {
 
 export const TopNav = ({ title }: TopNavProps) => {
   const { logout } = useAuth();
+  const { preferences } = useOrg();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -18,7 +20,14 @@ export const TopNav = ({ title }: TopNavProps) => {
   return (
     <header className="top-nav">
       <div className="top-nav-content">
-        <h1 className="page-title">{title}</h1>
+        <div>
+          {preferences.displayName && (
+            <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {preferences.displayName}
+            </p>
+          )}
+          <h1 className="page-title" style={{ margin: 0 }}>{title}</h1>
+        </div>
         <div className="top-nav-actions">
           <button className="icon-btn">
             <Search size={22} />

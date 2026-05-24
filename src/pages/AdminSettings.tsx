@@ -5,12 +5,16 @@ import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
 import { useAuth } from '../contexts/AuthContext';
+import { useOrg } from '../contexts/OrgContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
 
 export const AdminSettings = () => {
   const [tab, setTab] = useState('catalog');
   const [catalogView, setCatalogView] = useState<'products' | 'rawMaterials'>('products');
+  const { preferences, updatePreferences } = useOrg();
+  const [brandingForm, setBrandingForm] = useState({ displayName: '', primaryColor: '', secondaryColor: '' });
+  const [brandingSaving, setBrandingSaving] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const { token } = useAuth();
   const { canDelete, canManageCatalog } = usePermissions();
@@ -61,6 +65,12 @@ export const AdminSettings = () => {
     } else if (tab === 'masters') {
       fetchStatuses();
       fetchGsmList();
+    } else if (tab === 'branding') {
+      setBrandingForm({
+        displayName: preferences.displayName || '',
+        primaryColor: preferences.primaryColor || '',
+        secondaryColor: preferences.secondaryColor || '',
+      });
     }
   }, [tab, searchQuery]);
 
@@ -772,7 +782,8 @@ export const AdminSettings = () => {
         options={[
           { label: 'Catalog', value: 'catalog' },
           { label: 'Users & Access', value: 'users' },
-          { label: 'Masters', value: 'masters' }
+          { label: 'Masters', value: 'masters' },
+          { label: 'Branding', value: 'branding' }
         ]}
         value={tab}
         onChange={setTab}
@@ -868,6 +879,73 @@ export const AdminSettings = () => {
               )}
             </Card>
           </div>
+        )}
+
+        {tab === 'branding' && (
+          <Card style={{ padding: 'var(--space-6)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1rem' }}>Organisation Branding</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Display Name</label>
+                <Input
+                  type="text"
+                  placeholder="e.g. Mohinifab"
+                  value={brandingForm.displayName}
+                  onChange={e => setBrandingForm(p => ({ ...p, displayName: e.target.value }))}
+                />
+              </div>
+              <div className="grid-layout">
+                <div>
+                  <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Primary Colour</label>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={brandingForm.primaryColor || '#E8197D'}
+                      onChange={e => setBrandingForm(p => ({ ...p, primaryColor: e.target.value }))}
+                      style={{ width: '44px', height: '44px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', padding: '2px' }}
+                    />
+                    <Input
+                      type="text"
+                      placeholder="#E8197D"
+                      value={brandingForm.primaryColor}
+                      onChange={e => setBrandingForm(p => ({ ...p, primaryColor: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Secondary Colour</label>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={brandingForm.secondaryColor || '#29B6E8'}
+                      onChange={e => setBrandingForm(p => ({ ...p, secondaryColor: e.target.value }))}
+                      style={{ width: '44px', height: '44px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', padding: '2px' }}
+                    />
+                    <Input
+                      type="text"
+                      placeholder="#29B6E8"
+                      value={brandingForm.secondaryColor}
+                      onChange={e => setBrandingForm(p => ({ ...p, secondaryColor: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 'var(--space-3)', paddingTop: 'var(--space-2)' }}>
+                <div style={{ flex: 1, height: '48px', borderRadius: 'var(--radius-md)', background: brandingForm.primaryColor || 'var(--color-primary)' }} />
+                <div style={{ flex: 1, height: '48px', borderRadius: 'var(--radius-md)', background: brandingForm.secondaryColor || 'var(--color-accent)' }} />
+              </div>
+              <Button
+                variant="primary"
+                style={{ width: '100%' }}
+                onClick={async () => {
+                  setBrandingSaving(true);
+                  try { await updatePreferences(brandingForm); } finally { setBrandingSaving(false); }
+                }}
+              >
+                {brandingSaving ? 'Saving…' : 'Save Branding'}
+              </Button>
+            </div>
+          </Card>
         )}
       </div>
     </div>
