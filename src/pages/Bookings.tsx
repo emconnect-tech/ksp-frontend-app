@@ -1122,8 +1122,22 @@ export const Bookings = () => {
 
         {wizardStep === 3 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <Button
+                variant="outline"
+                onClick={handleShareEnquiry}
+                style={{ width: '100%', borderColor: 'var(--color-primary)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                <Share2 size={18} /> Share as Enquiry (Template)
+              </Button>
+              <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                <Button variant="outline" onClick={() => setWizardStep(2)} style={{ flex: 1 }}>Back</Button>
+                <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm & Create Order</Button>
+              </div>
+            </div>
+
             <div style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ margin: '0 0 var(--space-4) 0', fontSize: '0.95rem' }}>Quotation Summary</h4>
+              <h4 style={{ margin: '0 0 var(--space-4) 0', fontSize: '0.95rem' }}>Order Summary</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 {orderItems.map((item, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
@@ -1139,24 +1153,10 @@ export const Bookings = () => {
               </div>
               <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 'var(--space-4) 0' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                <span>Total Amount</span>
+                <span>Estimated Total</span>
                 <span style={{ color: 'var(--color-primary)' }}>
                   ₹{orderItems.reduce((sum, item) => sum + (item.qty * item.rate), 0).toLocaleString()}
                 </span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              <Button 
-                variant="outline" 
-                onClick={handleShareEnquiry}
-                style={{ width: '100%', borderColor: 'var(--color-primary)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-              >
-                <Share2 size={18} /> Share as Enquiry (Template)
-              </Button>
-              <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-                <Button variant="outline" onClick={() => setWizardStep(2)} style={{ flex: 1 }}>Back</Button>
-                <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm & Create Order</Button>
               </div>
             </div>
           </div>
