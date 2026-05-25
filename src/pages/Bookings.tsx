@@ -6,6 +6,7 @@ import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
 import { CustomerForm } from '../components/customers/CustomerForm';
+import { ProductVariantPicker } from '../components/ProductVariantPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useOrg } from '../contexts/OrgContext';
 import { usePermissions } from '../hooks/usePermissions';
@@ -88,6 +89,15 @@ export const Bookings = () => {
     }
   };
 
+  const getVariantInfo = (variantId: number | string | null | undefined) => {
+    if (!variantId) return { label: '—', gsm: null as number | null, size: '', rate: 0 };
+    for (const p of productsList) {
+      const v = p.variants?.find((v: any) => String(v.id) === String(variantId));
+      if (v) return { label: `${p.name} • ${v.size ?? ''}`, gsm: v.gsm ?? null, size: v.size ?? '', rate: v.rateOverride || 0 };
+    }
+    return { label: String(variantId), gsm: null as number | null, size: '', rate: 0 };
+  };
+
   const mapPhase = (statusName: string | null, totalWeightKg: number | null): { phase: string; action: string | null } => {
     switch (statusName) {
       case 'CONFIRMED':    return { phase: 'Bill Uploaded',      action: 'Dispatch (Full/Partial)' };
@@ -121,7 +131,7 @@ export const Bookings = () => {
           itemsList: o.items?.map((i: any) => ({
             id: i.id,
             variantId: i.productVariantId,
-            name: 'Product ' + i.productVariantId.substring(0, 4),
+            name: String(i.productVariantId),
             qty: i.noOfBundles || 1,
             weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [],
             price: i.unitRate || 0
@@ -328,6 +338,7 @@ export const Bookings = () => {
   const [showAddItemForm, setShowAddItemForm] = useState(false);
   const [newItemVariantId, setNewItemVariantId] = useState('');
   const [newItemQty, setNewItemQty] = useState(1);
+  const [newItemPrice, setNewItemPrice] = useState<number>(0);
 
   useEffect(() => {
     if (selectedOrder?.itemsList) {
@@ -349,7 +360,7 @@ export const Bookings = () => {
             : (item.weightKg || 0);
           return {
             productVariantId: item.variantId,
-            noOfBundles: item.qty,
+            noOfBundles: itemQtys[idx] ?? item.qty,
             unitRate: itemPrices[idx],
             lineTotal: w * itemPrices[idx]
           };
@@ -365,7 +376,7 @@ export const Bookings = () => {
       const updated = {
         ...selectedOrder,
         amount: `₹${newTotal.toLocaleString()}`,
-        itemsList: selectedOrder.itemsList.map((item: any, idx: number) => ({ ...item, price: itemPrices[idx] }))
+        itemsList: selectedOrder.itemsList.map((item: any, idx: number) => ({ ...item, price: itemPrices[idx], qty: itemQtys[idx] ?? item.qty }))
       };
       setSelectedOrder(updated);
       setOrders(prev => prev.map(o => o.id === selectedOrder.id ? updated : o));
@@ -397,13 +408,8 @@ export const Bookings = () => {
 
   const handleAddItemToOrder = async () => {
     if (!selectedOrder || !newItemVariantId) return;
-    let rate = 0;
-    let itemName = newItemVariantId;
-    for (const p of productsList) {
-      const variant = p.variants?.find((v: any) => v.id === newItemVariantId);
-      if (variant) { rate = variant.rateOverride || 0; itemName = `${p.name} - ${variant.size}`; break; }
-    }
-    const newItem = { variantId: newItemVariantId, name: itemName, qty: newItemQty, weights: Array(newItemQty).fill(''), price: rate };
+    const info = getVariantInfo(newItemVariantId);
+    const newItem = { variantId: newItemVariantId, name: newItemVariantId, qty: newItemQty, weights: Array(newItemQty).fill(''), price: newItemPrice || info.rate };
     const updatedItems = [...selectedOrder.itemsList, newItem];
     const payload = {
       customerId: selectedOrder.customerId,
@@ -582,7 +588,7 @@ export const Bookings = () => {
         ? item.weights.reduce((a: number, b: number) => a + (parseFloat(b as any) || 0), 0)
         : (item.weight || 0);
       const weightStr = totalWt > 0 ? ` (${totalWt} kg)` : '';
-      return `• ${item.name}: ${item.qty} Bundles${weightStr}`;
+      return `• ${getVariantInfo(item.variantId).label}: ${item.qty} Bundles${weightStr}`;
     }).join('\n');
 
     const message = `*${orgName} Quotation - #${order.id}*\n` +
@@ -787,27 +793,45 @@ export const Bookings = () => {
           {phase.phase === 'Order Created' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
               {selectedOrder.itemsList?.map((item: any, idx: number) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
-                  <span style={{ fontWeight: 500 }}>{item.name}</span>
-                  <span style={{ color: 'var(--color-text-muted)' }}>{item.qty} bundles</span>
+                <div key={idx} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
+                  {(() => { const info = getVariantInfo(item.variantId); return (
+                    <>
+                      <div style={{ fontWeight: 600, marginBottom: '4px' }}>{info.label}</div>
+                      <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {info.gsm && <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>{info.gsm} GSM</span>}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Input
+                            type="number"
+                            value={itemQtys[idx] ?? item.qty ?? 1}
+                            onChange={(e) => setItemQtys(prev => { const n = [...prev]; n[idx] = parseInt(e.target.value) || 1; return n; })}
+                            style={{ width: '52px', height: '26px', padding: '1px 6px', fontSize: '0.8rem', display: 'inline-block' }}
+                          />
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>bundles</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>₹</span>
+                          <Input
+                            type="number"
+                            value={itemPrices[idx] ?? item.price ?? 0}
+                            onChange={(e) => setItemPrices(prev => { const n = [...prev]; n[idx] = parseFloat(e.target.value) || 0; return n; })}
+                            style={{ width: '70px', height: '26px', padding: '1px 6px', fontSize: '0.8rem', display: 'inline-block' }}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ); })()}
                 </div>
               ))}
 
               {showAddItemForm ? (
                 <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', width: '100%', boxSizing: 'border-box' }}>
-                  <select
-                    className="input-field"
+                  <ProductVariantPicker
+                    productsList={productsList}
                     value={newItemVariantId}
-                    onChange={(e) => setNewItemVariantId(e.target.value)}
-                    style={{ fontSize: '0.85rem', width: '100%' }}
-                  >
-                    <option value="">Select product...</option>
-                    {productsList.filter((p: any) => p.isActive !== false).map((p: any) =>
-                      p.variants?.filter((v: any) => v.isActive !== false).map((v: any) => (
-                        <option key={v.id} value={v.id}>{p.name} - {v.size}</option>
-                      ))
-                    )}
-                  </select>
+                    onChange={(id) => { setNewItemVariantId(String(id)); setNewItemPrice(getVariantInfo(id).rate); }}
+                    placeholder="Select product..."
+                    style={{ fontSize: '0.85rem' }}
+                  />
                   <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
                     <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Qty</label>
                     <Input
@@ -816,9 +840,16 @@ export const Bookings = () => {
                       onChange={(e) => setNewItemQty(parseInt(e.target.value) || 1)}
                       style={{ flex: 1, height: '32px', fontSize: '0.85rem' }}
                     />
+                    <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>₹</label>
+                    <Input
+                      type="number"
+                      value={newItemPrice}
+                      onChange={(e) => setNewItemPrice(parseFloat(e.target.value) || 0)}
+                      style={{ flex: 1, height: '32px', fontSize: '0.85rem' }}
+                    />
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                    <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem', padding: 'var(--space-2)' }} onClick={() => { setShowAddItemForm(false); setNewItemVariantId(''); setNewItemQty(1); }}>Cancel</Button>
+                    <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem', padding: 'var(--space-2)' }} onClick={() => { setShowAddItemForm(false); setNewItemVariantId(''); setNewItemQty(1); setNewItemPrice(0); }}>Cancel</Button>
                     <Button variant="primary" style={{ flex: 2, fontSize: '0.8rem', padding: 'var(--space-2)' }} onClick={handleAddItemToOrder} disabled={!newItemVariantId}>Add</Button>
                   </div>
                 </div>
@@ -845,7 +876,7 @@ export const Bookings = () => {
                   return (
                     <div key={idx} style={{ padding: 'var(--space-3)', borderBottom: idx < (selectedOrder.itemsList?.length ?? 0) - 1 ? '1px solid var(--color-border)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{item.name}</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{getVariantInfo(item.variantId).label}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
                           <span
                             onClick={() => {
@@ -1151,18 +1182,12 @@ export const Bookings = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px' }}>Product</label>
-                    <select 
-                      className="input-field" 
+                    <ProductVariantPicker
+                      productsList={productsList}
                       value={item.product}
-                      onChange={(e) => updateItem(item.id, 'product', e.target.value)}
-                    >
-                      <option value="">Select a product...</option>
-                      {productsList.filter((p: any) => p.isActive !== false).map(p =>
-                        p.variants?.filter((v: any) => v.isActive !== false).map((v: any) => (
-                          <option key={v.id} value={v.id}>{p.name} - {v.size}</option>
-                        ))
-                      )}
-                    </select>
+                      onChange={(id) => updateItem(item.id, 'product', String(id))}
+                      placeholder="Select a product..."
+                    />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px' }}>Quantity</label>
@@ -1318,7 +1343,7 @@ export const Bookings = () => {
                 );
                 return weightsFormData.map((item, itemIdx) => (
                 <div key={itemIdx}>
-                  <h4 style={{ margin: '0 0 var(--space-3) 0', fontSize: '0.9rem' }}>{item.name} ({item.qty} Bundles)</h4>
+                  <h4 style={{ margin: '0 0 var(--space-3) 0', fontSize: '0.9rem' }}>{getVariantInfo(item.variantId).label} ({item.qty} Bundles)</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                     {item.weights.map((w: any, wIdx: number) => {
                       const key = `${itemIdx}-${wIdx}`;

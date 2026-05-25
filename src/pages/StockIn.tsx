@@ -7,6 +7,7 @@ import { Badge } from '../design-system/components/ui/Badge';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
+import { ProductVariantPicker } from '../components/ProductVariantPicker';
 
 export const StockIn = () => {
   const [tab, setTab] = useState('history');
@@ -103,7 +104,7 @@ export const StockIn = () => {
       const payload = {
         productVariantId: editData.productVariantId,
         entryDate: editData.entryDate,
-        gsm: parseInt(editData.gsm),
+        gsm: editData.gsm ? parseInt(editData.gsm) : null,
         size: editData.size,
         noOfBundles: parseInt(editData.bundles),
         weightKg: parseFloat(editData.weightKg),
@@ -161,10 +162,19 @@ export const StockIn = () => {
 
   const findVariant = (variantId: string) => {
     for (const p of productsList) {
-      const v = p.variants?.find((v: any) => v.id === variantId);
+      const v = p.variants?.find((v: any) => String(v.id) === variantId);
       if (v) return v;
     }
     return null;
+  };
+
+  const getVariantLabel = (variantId: number | string | null | undefined): string => {
+    if (!variantId) return '—';
+    for (const p of productsList) {
+      const v = p.variants?.find((v: any) => String(v.id) === String(variantId));
+      if (v) return `${p.name} • ${v.size ?? ''}`;
+    }
+    return String(variantId);
   };
 
   const handleVariantChange = (variantId: string) => {
@@ -195,7 +205,7 @@ export const StockIn = () => {
     const payload: any = {
       productVariantId: formData.productVariantId,
       entryDate: formData.entryDate,
-      gsm: parseInt(formData.gsm),
+      gsm: formData.gsm ? parseInt(formData.gsm) : null,
       size: formData.size,
       noOfBundles: parseInt(formData.bundles),
       weightKg: parseFloat(formData.weightKg),
@@ -242,14 +252,12 @@ export const StockIn = () => {
         <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Stock Type / Product</label>
-            <select className="input-field" value={formData.productVariantId} onChange={e => handleVariantChange(e.target.value)} required>
-              <option value="" disabled>Select Product Variant...</option>
-              {productsList.map(p =>
-                p.variants?.map((v: any) => (
-                  <option key={v.id} value={v.id}>{p.name}{v.gsm ? ` - ${v.gsm} GSM` : ''}{v.size ? ` • ${v.size}` : ''}</option>
-                ))
-              )}
-            </select>
+            <ProductVariantPicker
+              productsList={productsList}
+              value={formData.productVariantId}
+              onChange={(id) => handleVariantChange(String(id))}
+              placeholder="Select Product Variant..."
+            />
           </div>
           <div className="grid-layout">
             <div>
@@ -331,12 +339,12 @@ export const StockIn = () => {
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}
         >
           <div>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: '1.1rem' }}>{entry.type || `Variant ${entry.productVariantId?.substring(0,6)}`}</p>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: '1.1rem' }}>{entry.type || getVariantLabel(entry.productVariantId)}</p>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
               {entry.noOfBundles} Bundles ({entry.weightKg}kg)
             </p>
             <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-              {new Date(entry.entryDate).toLocaleDateString()} • {entry.gsm} GSM • {entry.size}
+              {new Date(entry.entryDate).toLocaleDateString()}{entry.gsm ? ` • ${entry.gsm} GSM` : ''}{entry.size ? ` • ${entry.size}` : ''}
             </p>
           </div>
           <Badge status="completed">In</Badge>
@@ -372,14 +380,12 @@ export const StockIn = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Stock Type / Product</label>
-                <select className="input-field" value={editData.productVariantId} onChange={e => handleEditVariantChange(e.target.value)} required>
-                  <option value="" disabled>Select Product Variant...</option>
-                  {productsList.map((p: any) =>
-                    p.variants?.map((v: any) => (
-                      <option key={v.id} value={v.id}>{p.name}{v.gsm ? ` - ${v.gsm} GSM` : ''}{v.size ? ` • ${v.size}` : ''}</option>
-                    ))
-                  )}
-                </select>
+                <ProductVariantPicker
+                  productsList={productsList}
+                  value={editData.productVariantId}
+                  onChange={(id) => handleEditVariantChange(String(id))}
+                  placeholder="Select Product Variant..."
+                />
               </div>
               <div className="grid-layout">
                 <div>
@@ -423,11 +429,11 @@ export const StockIn = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>Entry ID</label>
-                <div style={{ fontWeight: 600, fontSize: '1.1rem', color: 'var(--color-primary)' }}>#STK-00{selectedEntry.id}</div>
+                <div style={{ fontWeight: 600, fontSize: '1.1rem', color: 'var(--color-primary)' }}>#STK-{String(selectedEntry.id).padStart(4, '0')}</div>
               </div>
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Product / Stock Type</label>
-                <div style={{ fontWeight: 600, fontSize: '1.2rem' }}>{selectedEntry.type || `Variant ${selectedEntry.productVariantId?.substring(0,6)}`}</div>
+                <div style={{ fontWeight: 600, fontSize: '1.2rem' }}>{selectedEntry.type || getVariantLabel(selectedEntry.productVariantId)}</div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
                 <div>
