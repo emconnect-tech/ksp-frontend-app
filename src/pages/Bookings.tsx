@@ -168,38 +168,61 @@ export const Bookings = () => {
   const extraFileInputRef = useRef<HTMLInputElement>(null);
   const [addPhotoContext, setAddPhotoContext] = useState<{ orderId: string; attachmentType: string } | null>(null);
 
-  const ALLOC_KEY = 'ksp_stock_alloc';
-
-  const getAllocations = (): Record<string, string> =>
-    JSON.parse(localStorage.getItem(ALLOC_KEY) || '{}');
-
-  const saveAllocations = (allocs: Record<string, string>) =>
-    localStorage.setItem(ALLOC_KEY, JSON.stringify(allocs));
-
   const openWeightsModal = async (order: any) => {
     setActiveOrderId(order.id);
-    const allocs = getAllocations();
-    setWeightsFormData(order.itemsList.map((item: any) => {
-      const qty = item.qty;
-      const weights = Array.isArray(item.weights) && item.weights.length === qty
-        ? [...item.weights]
-        : Array(qty).fill('');
-      const stockKeys = Array(qty).fill('').map((_: any, i: number) =>
-        allocs[`${order.id}:${item.variantId}:${i}`] || ''
-      );
-      return { ...item, weights, stockKeys };
-    }));
     setManualBundle({});
+
+    let entries: any[] = [];
+    let existingAllocs: any[] = [];
     if (!config.USE_MOCK_API) {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/stock-in`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) setStockInEntries(await res.json());
+        const [entryRes, allocRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/v1/stock-in?excludeOrderId=${order.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }),
+          fetch(`${API_BASE_URL}/api/v1/stock-in/allocations/${order.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+        ]);
+        if (entryRes.ok) entries = await entryRes.json();
+        if (allocRes.ok) existingAllocs = await allocRes.json();
       } catch (e) {
         console.error('Failed to fetch stock-in', e);
       }
     }
+    setStockInEntries(entries);
+
+    // Pre-populate stockKeys from existing allocations
+    const entryMap = new Map(entries.map((e: any) => [e.id, e]));
+    const allocByVariant = new Map<string, Array<{ stockKey: string; weight: string }>>();
+    for (const alloc of existingAllocs) {
+      const entry = entryMap.get(alloc.stockInEntryId);
+      if (!entry) continue;
+      const variantId = entry.productVariantId;
+      if (!allocByVariant.has(variantId)) allocByVariant.set(variantId, []);
+      let weight = '';
+      if (entry.bundleWeights && alloc.bundleIndex >= 0) {
+        const bws = entry.bundleWeights.split(',');
+        weight = bws[alloc.bundleIndex]?.trim() || '';
+      } else {
+        weight = entry.noOfBundles > 0
+          ? (entry.weightKg / entry.noOfBundles).toFixed(2)
+          : String(entry.weightKg);
+      }
+      const stockKey = `${alloc.stockInEntryId}:${alloc.bundleIndex === -1 ? 'avg' : alloc.bundleIndex}`;
+      allocByVariant.get(variantId)!.push({ stockKey, weight });
+    }
+
+    setWeightsFormData(order.itemsList.map((item: any) => {
+      const qty = item.qty;
+      const preAllocs = allocByVariant.get(item.variantId) || [];
+      const weights = Array(qty).fill('').map((_: any, i: number) =>
+        preAllocs[i]?.weight || (Array.isArray(item.weights) && item.weights[i] ? String(item.weights[i]) : '')
+      );
+      const stockKeys = Array(qty).fill('').map((_: any, i: number) => preAllocs[i]?.stockKey || '');
+      return { ...item, weights, stockKeys };
+    }));
+
     setShowAddWeightsModal(true);
   };
 
@@ -222,35 +245,39 @@ export const Bookings = () => {
     const orderToUpdate = orders.find(o => o.id === activeOrderId);
     if (!orderToUpdate) return;
 
-    // Persist stock allocations: clear old ones for this order, write new ones
-    const allocs = getAllocations();
-    Object.keys(allocs).forEach(k => { if (k.startsWith(activeOrderId + ':')) delete allocs[k]; });
-    weightsFormData.forEach(item => {
-      (item.stockKeys || []).forEach((key: string, i: number) => {
-        if (key) allocs[`${activeOrderId}:${item.variantId}:${i}`] = key;
-      });
-    });
-    saveAllocations(allocs);
-
-    // Separate tagged (has weight) vs untagged bundles
-    const taggedItems = weightsFormData.map(item => ({
-      ...item,
-      weights: item.weights.map((w: any) => parseFloat(w) > 0 ? w : null)
-    }));
     const untaggedCounts = weightsFormData.map(item =>
       item.weights.filter((w: any) => !(parseFloat(w) > 0)).length
     );
     const hasUntagged = untaggedCounts.some(c => c > 0);
 
+    // Build allocation payload for backend
+    const allocPayload = weightsFormData.flatMap((item: any) =>
+      (item.stockKeys || []).map((key: string) => {
+        if (!key) return null;
+        const sepIdx = key.lastIndexOf(':');
+        const stockInEntryId = key.substring(0, sepIdx);
+        const bundleIndexStr = key.substring(sepIdx + 1);
+        const bundleIndex = bundleIndexStr === 'avg' ? -1 : parseInt(bundleIndexStr);
+        return { stockInEntryId, bundleIndex };
+      }).filter(Boolean)
+    );
+
     try {
       const payload = {
         customerId: orderToUpdate.customerId,
-        items: weightsFormData.map(i => {
+        items: weightsFormData.map((i: any) => {
           const itemWt = i.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0);
           return { productVariantId: i.variantId, weightKg: itemWt, bundleWeights: i.weights.join(',') };
         })
       };
       await updateOrderWeightsAPI(activeOrderId, payload);
+
+      // Persist allocations to backend
+      await fetch(`${API_BASE_URL}/api/v1/stock-in/allocations/${activeOrderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(allocPayload)
+      });
 
       const grandTotalWt = weightsFormData.reduce((sum, item) =>
         sum + item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0), 0);
@@ -1277,13 +1304,14 @@ export const Bookings = () => {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
               {(() => {
-                // Build set of stock keys consumed by OTHER orders (from localStorage)
-                const allocs = getAllocations();
-                const consumedByOthers = new Set(
-                  Object.entries(allocs)
-                    .filter(([k]) => !k.startsWith((activeOrderId || '') + ':'))
-                    .map(([, v]) => v)
-                );
+                // Build set of stock keys consumed by OTHER orders (from backend allocatedBundleIndices)
+                // The stock entries were fetched with excludeOrderId so they already exclude the current order
+                const consumedByOthers = new Set<string>();
+                stockInEntries.forEach((entry: any) => {
+                  (entry.allocatedBundleIndices || []).forEach((bi: number) => {
+                    consumedByOthers.add(`${entry.id}:${bi === -1 ? 'avg' : bi}`);
+                  });
+                });
                 // Build set of stock keys already selected within THIS modal (across all bundles)
                 const selectedInModal = new Set(
                   weightsFormData.flatMap(item => (item.stockKeys || []).filter(Boolean))
@@ -1327,8 +1355,8 @@ export const Bookings = () => {
                               style={{ flex: 1, fontSize: '0.85rem' }}
                             >
                               <option value="">— Select from Stock-In —</option>
-                              {stockInEntries.flatMap((entry: any) => {
-                                const label = entry.type || entry.productVariantId?.substring(0, 6) || 'Stock';
+                              {stockInEntries.filter((e: any) => e.productVariantId === item.variantId).flatMap((entry: any) => {
+                                const label = entry.type || String(entry.productVariantId) || 'Stock';
                                 const date = new Date(entry.entryDate).toLocaleDateString();
                                 if (entry.bundleWeights) {
                                   return entry.bundleWeights.split(',').map((bw: string, i: number) => {
