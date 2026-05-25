@@ -28,7 +28,8 @@ const PHASES = [
 
 
 export const Bookings = () => {
-  const [tab, setTab] = useState('ongoing');
+  const [tab, setTab] = useState('pending');
+  const [dialogState, setDialogState] = useState<{ title: string; message: string; onConfirm?: () => void } | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [orders, setOrders] = useState<any[]>([]);
@@ -298,32 +299,33 @@ export const Bookings = () => {
       // Backorder for untagged bundles
       if (hasUntagged) {
         const total = untaggedCounts.reduce((s, c) => s + c, 0);
-        const confirmed = window.confirm(
-          `${total} bundle(s) have no weight assigned.\n\nCreate a pending backorder for the untagged bundles?`
-        );
-        if (confirmed) {
-          const backorderItems = weightsFormData
-            .map((item, idx) => ({ variantId: item.variantId, qty: untaggedCounts[idx], price: item.price || 0 }))
-            .filter(i => i.qty > 0);
-          const backorderPayload = {
-            customerId: orderToUpdate.customerId,
-            notes: `Backorder from #${orderToUpdate.orderNumber || activeOrderId}`,
-            items: backorderItems.map(i => ({ productVariantId: i.variantId, noOfBundles: i.qty, unitRate: i.price, lineTotal: 0 }))
-          };
-          const resp = await createOrderAPI(backorderPayload);
-          const newOrder = {
-            id: resp.id, orderNumber: resp.orderNumber, customerId: orderToUpdate.customerId,
-            customer: orderToUpdate.customer, items: backorderItems.reduce((s, i) => s + i.qty, 0),
-            totalWeight: 'Pending', amount: '₹0', phase: 'Order Created', action: 'Add Weights',
-            date: new Date().toISOString().split('T')[0],
-            itemsList: backorderItems.map(i => ({ variantId: i.variantId, name: i.variantId, qty: i.qty, weights: Array(i.qty).fill(''), price: i.price }))
-          };
-          setOrders(prev => [newOrder, ...prev]);
-        }
+        const backorderItems = weightsFormData
+          .map((item, idx) => ({ variantId: item.variantId, qty: untaggedCounts[idx], price: item.price || 0 }))
+          .filter(i => i.qty > 0);
+        setDialogState({
+          title: 'Untagged Bundles',
+          message: `${total} bundle(s) have no weight assigned. Create a pending backorder for the untagged bundles?`,
+          onConfirm: async () => {
+            const backorderPayload = {
+              customerId: orderToUpdate.customerId,
+              notes: `Backorder from #${orderToUpdate.orderNumber || activeOrderId}`,
+              items: backorderItems.map(i => ({ productVariantId: i.variantId, noOfBundles: i.qty, unitRate: i.price, lineTotal: 0 }))
+            };
+            const resp = await createOrderAPI(backorderPayload);
+            const newOrder = {
+              id: resp.id, orderNumber: resp.orderNumber, customerId: orderToUpdate.customerId,
+              customer: orderToUpdate.customer, items: backorderItems.reduce((s, i) => s + i.qty, 0),
+              totalWeight: 'Pending', amount: '₹0', phase: 'Order Created', action: 'Add Weights',
+              date: new Date().toISOString().split('T')[0],
+              itemsList: backorderItems.map(i => ({ variantId: i.variantId, name: i.variantId, qty: i.qty, weights: Array(i.qty).fill(''), price: i.price }))
+            };
+            setOrders(prev => [newOrder, ...prev]);
+          }
+        });
       }
     } catch (e) {
       console.error(e);
-      alert('Failed to save weights');
+      setDialogState({ title: 'Error', message: 'Failed to save weights.' });
     }
 
     setShowAddWeightsModal(false);
@@ -331,6 +333,7 @@ export const Bookings = () => {
   };
 
   const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
+  const [transportData, setTransportData] = useState<Record<string, { bundles: number; rate: number; enabled: boolean }>>({});
   const [itemPrices, setItemPrices] = useState<number[]>([]);
   const [itemQtys, setItemQtys] = useState<number[]>([]);
   const [savingPrices, setSavingPrices] = useState(false);
@@ -382,7 +385,7 @@ export const Bookings = () => {
       setOrders(prev => prev.map(o => o.id === selectedOrder.id ? updated : o));
     } catch (e) {
       console.error('Failed to save prices', e);
-      alert('Failed to save prices');
+      setDialogState({ title: 'Error', message: 'Failed to save prices.' });
     } finally {
       setSavingPrices(false);
     }
@@ -432,7 +435,7 @@ export const Bookings = () => {
       setNewItemQty(1);
     } catch (e) {
       console.error('Failed to add product', e);
-      alert('Failed to add product');
+      setDialogState({ title: 'Error', message: 'Failed to add product.' });
     }
   };
 
@@ -449,11 +452,9 @@ export const Bookings = () => {
       if (selectedOrder?.id === orderId) setView('list');
     } catch (e) {
       console.error('Failed to delete order', e);
-      alert('Failed to delete order');
+      setDialogState({ title: 'Error', message: 'Failed to delete order.' });
     }
   };
-
-  const [dispatchType, setDispatchType] = useState<'Full' | 'Partial' | null>(null);
 
   const getAttachmentType = (phase: string) => {
     if (phase === 'Dispatched') return 'LR_PHOTO';
@@ -506,7 +507,7 @@ export const Bookings = () => {
       if (full) setSelectedOrder((prev: any) => ({ ...prev, attachments: full.attachments || [] }));
     } catch (err) {
       console.error('Extra upload failed', err);
-      alert('Upload failed. Please try again.');
+      setDialogState({ title: 'Upload Failed', message: 'Upload failed. Please try again.' });
     }
   };
 
@@ -519,20 +520,18 @@ export const Bookings = () => {
     if (!order) return;
 
     const attachmentType = getAttachmentType(order.phase);
-    const targetPhase = dispatchType === 'Partial' ? 'Partially Dispatched' : undefined;
     setShowActionSheet(false);
 
     try {
       await uploadFiles(files, activeOrderId, attachmentType);
-      await handleAction(activeOrderId, targetPhase);
+      await handleAction(activeOrderId);
       const full = await fetchOrderByIdAPI(activeOrderId);
       if (full) setSelectedOrder((prev: any) => ({ ...prev, attachments: full.attachments || [] }));
     } catch (err) {
       console.error('Upload failed', err);
-      alert('File upload failed. Please try again.');
+      setDialogState({ title: 'Upload Failed', message: 'File upload failed. Please try again.' });
     } finally {
       setActiveOrderId(null);
-      setDispatchType(null);
     }
   };
 
@@ -578,7 +577,7 @@ export const Bookings = () => {
       }
     } catch(e) {
       console.error(e);
-      alert('Failed to update order status');
+      setDialogState({ title: 'Error', message: 'Failed to update order status.' });
     }
   };
 
@@ -651,13 +650,13 @@ export const Bookings = () => {
       setOrders(prev => [newOrder, ...prev]);
       setSelectedOrder(newOrder);
       setView('details');
-      setTab('ongoing');
+      setTab('pending');
       setWizardStep(1);
       setSelectedCustomer('');
       setOrderItems([{ id: Date.now(), product: '', qty: 1, rate: 0 }]);
     } catch (e) {
       console.error(e);
-      alert('Failed to create order');
+      setDialogState({ title: 'Error', message: 'Failed to create order.' });
     }
   };
 
@@ -686,12 +685,46 @@ export const Bookings = () => {
 
   // Renders the list of orders based on the selected tab
   const renderList = () => {
-    const filteredOrders = orders.filter(o => 
-      tab === 'ongoing' ? o.phase !== 'Completed' : o.phase === 'Completed'
+    const today = new Date().toISOString().split('T')[0];
+    const filteredOrders = orders.filter(o =>
+      tab === 'pending'
+        ? (o.phase !== 'Completed' || o.date < today)
+        : o.phase === 'Completed'
     );
+
+    const renderPendingStats = () => {
+      if (tab !== 'pending' || filteredOrders.length === 0) return null;
+      const statsMap: Record<string, { label: string; totalBundles: number; orderCount: number }> = {};
+      for (const order of filteredOrders) {
+        for (const item of (order.itemsList || [])) {
+          if (!item.variantId) continue;
+          const key = String(item.variantId);
+          if (!statsMap[key]) statsMap[key] = { label: getVariantInfo(item.variantId).label, totalBundles: 0, orderCount: 0 };
+          statsMap[key].totalBundles += item.qty || 0;
+          statsMap[key].orderCount += 1;
+        }
+      }
+      const entries = Object.values(statsMap).filter(s => s.totalBundles > 0);
+      if (entries.length === 0) return null;
+      return (
+        <div>
+          <p style={{ margin: '0 0 var(--space-2) 0', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Outstanding to Deliver</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-2)' }}>
+            {entries.map((s, i) => (
+              <Card key={i} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', border: 'none' }}>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-text-muted)', lineHeight: 1.3, marginBottom: '4px' }}>{s.label}</p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-primary)' }}>{s.totalBundles} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--color-text-muted)' }}>bundles</span></p>
+                {s.orderCount > 1 && <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>across {s.orderCount} orders</p>}
+              </Card>
+            ))}
+          </div>
+        </div>
+      );
+    };
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        {renderPendingStats()}
         {filteredOrders.length > 0 ? filteredOrders.map((order) => (
           <Card 
             key={order.id} 
@@ -867,6 +900,17 @@ export const Bookings = () => {
           {/* Quotation / Weights Added — pricing editor */}
           {(phase.phase === 'Quotation Generated' || phase.phase === 'Weights Added') && (
             <>
+              {(() => {
+                const transport = transportData[selectedOrder.id] ?? { bundles: 0, rate: 0, enabled: false };
+                const setTransport = (patch: Partial<typeof transport>) =>
+                  setTransportData(prev => ({ ...prev, [selectedOrder.id]: { ...transport, ...patch } }));
+                const itemsTotal = selectedOrder.itemsList?.reduce((sum: number, item: any, idx: number) => {
+                  const wt = Array.isArray(item.weights) ? item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0) : (item.weightKg || 0);
+                  return sum + wt * (itemPrices[idx] ?? item.price ?? 0);
+                }, 0) ?? 0;
+                const transportTotal = transport.enabled ? (transport.bundles || 0) * (transport.rate || 0) : 0;
+                const grandTotal = itemsTotal + transportTotal;
+                return (
               <Card style={{ padding: 0, overflow: 'hidden' }}>
                 {selectedOrder.itemsList?.map((item: any, idx: number) => {
                   const unitPrice = itemPrices[idx] ?? item.price ?? 0;
@@ -874,16 +918,11 @@ export const Bookings = () => {
                     ? item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0)
                     : (item.weightKg || 0);
                   return (
-                    <div key={idx} style={{ padding: 'var(--space-3)', borderBottom: idx < (selectedOrder.itemsList?.length ?? 0) - 1 ? '1px solid var(--color-border)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <div key={idx} style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{getVariantInfo(item.variantId).label}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
-                          <span
-                            onClick={() => {
-                              openWeightsModal(selectedOrder);
-                            }}
-                            style={{ cursor: 'pointer', color: 'var(--color-primary)', borderBottom: '1px dashed var(--color-primary)' }}
-                          >
+                          <span onClick={() => openWeightsModal(selectedOrder)} style={{ cursor: 'pointer', color: 'var(--color-primary)', borderBottom: '1px dashed var(--color-primary)' }}>
                             {totalWt > 0 ? `${totalWt} kg` : 'No weight'}
                           </span>
                           <span>×</span>
@@ -903,16 +942,47 @@ export const Bookings = () => {
                     </div>
                   );
                 })}
+
+                {/* Transportation line */}
+                {transport.enabled ? (
+                  <div style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        Transportation
+                        <button onClick={() => setTransport({ enabled: false, bundles: 0, rate: 0 })} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', color: 'var(--color-text-muted)', padding: 0, lineHeight: 1 }}>✕</button>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        <Input
+                          type="number" placeholder="Bundles"
+                          value={transport.bundles || ''}
+                          onChange={(e) => setTransport({ bundles: parseInt(e.target.value) || 0 })}
+                          style={{ width: '72px', height: '24px', padding: '1px 4px', fontSize: '0.75rem', display: 'inline-block' }}
+                        />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>bundles ×</span>
+                        <Input
+                          type="number" placeholder="₹/bundle"
+                          value={transport.rate || ''}
+                          onChange={(e) => setTransport({ rate: parseFloat(e.target.value) || 0 })}
+                          style={{ width: '72px', height: '24px', padding: '1px 4px', fontSize: '0.75rem', display: 'inline-block' }}
+                        />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>/bundle</span>
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap' }}>₹{transportTotal.toLocaleString()}</span>
+                  </div>
+                ) : isEditable && (
+                  <button onClick={() => setTransport({ enabled: true })} style={{ width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--color-border)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--color-primary)', textAlign: 'left' }}>
+                    + Add Transportation
+                  </button>
+                )}
+
                 <div style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '0.9rem' }}>
                   <span>Total</span>
-                  <span style={{ color: 'var(--color-primary)' }}>
-                    ₹{(selectedOrder.itemsList?.reduce((sum: number, item: any, idx: number) => {
-                      const wt = Array.isArray(item.weights) ? item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0) : (item.weightKg || 0);
-                      return sum + wt * (itemPrices[idx] ?? item.price ?? 0);
-                    }, 0) ?? 0).toLocaleString()}
-                  </span>
+                  <span style={{ color: 'var(--color-primary)' }}>₹{grandTotal.toLocaleString()}</span>
                 </div>
               </Card>
+                );
+              })()}
               {isEditable && (
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                   <Button variant="outline" onClick={handleSavePrices} disabled={savingPrices} style={{ fontSize: '0.8rem', flex: 1 }}>
@@ -1156,11 +1226,11 @@ export const Bookings = () => {
                         setCustomersList(prev => [...prev, created]);
                         setSelectedCustomer(created.id);
                       } else {
-                        alert('Failed to create customer');
+                        setDialogState({ title: 'Error', message: 'Failed to create customer.' });
                       }
                     } catch (e) {
                       console.error(e);
-                      alert('Failed to create customer');
+                      setDialogState({ title: 'Error', message: 'Failed to create customer.' });
                     }
                   }}
                   onCancel={() => setSelectedCustomer('')}
@@ -1275,6 +1345,26 @@ export const Bookings = () => {
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
               <Button variant="outline" style={{ flex: 1 }} onClick={() => setConfirmDeleteOrderId(null)}>Cancel</Button>
               <Button variant="primary" style={{ flex: 1, background: '#fa5252', borderColor: '#fa5252' }} onClick={handleDeleteOrder}>Delete</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generic Dialog */}
+      {dialogState && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
+          <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: '320px', width: '100%' }}>
+            <h3 style={{ margin: '0 0 var(--space-3) 0', fontSize: '1rem' }}>{dialogState.title}</h3>
+            <p style={{ margin: '0 0 var(--space-5) 0', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>{dialogState.message}</p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <Button variant="outline" style={{ flex: 1 }} onClick={() => setDialogState(null)}>
+                {dialogState.onConfirm ? 'No' : 'OK'}
+              </Button>
+              {dialogState.onConfirm && (
+                <Button variant="primary" style={{ flex: 1 }} onClick={() => { dialogState.onConfirm!(); setDialogState(null); }}>
+                  Yes
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -1467,38 +1557,15 @@ export const Bookings = () => {
             boxShadow: '0 -4px 20px rgba(0,0,0,0.15)',
             animation: 'slideUp 0.3s ease-out'
           }} onClick={e => e.stopPropagation()}>
-            {(orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' || orders.find(o => o.id === activeOrderId)?.phase === 'Partially Dispatched') ? (
-              <>
-                <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)', textAlign: 'center' }}>Dispatch Type</h3>
-                <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
-                  <Button 
-                    variant={dispatchType === 'Full' ? 'primary' : 'outline'} 
-                    style={{ flex: 1, height: '60px' }}
-                    onClick={() => setDispatchType('Full')}
-                  >
-                    🚛 Full Dispatch
-                  </Button>
-                  <Button 
-                    variant={dispatchType === 'Partial' ? 'primary' : 'outline'} 
-                    style={{ flex: 1, height: '60px' }}
-                    onClick={() => setDispatchType('Partial')}
-                  >
-                    📦 Partial Dispatch
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <h3 style={{ marginTop: 0, marginBottom: 'var(--space-6)', textAlign: 'center' }}>Complete Action</h3>
-            )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', opacity: ((orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' || orders.find(o => o.id === activeOrderId)?.phase === 'Partially Dispatched') && !dispatchType) ? 0.5 : 1, pointerEvents: ((orders.find(o => o.id === activeOrderId)?.phase === 'Bill Uploaded' || orders.find(o => o.id === activeOrderId)?.phase === 'Partially Dispatched') && !dispatchType) ? 'none' : 'auto' }}>
+            <h3 style={{ marginTop: 0, marginBottom: 'var(--space-6)', textAlign: 'center' }}>Complete Action</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               <Button variant="primary" style={{ padding: 'var(--space-4)' }} onClick={() => cameraInputRef.current?.click()}>
                 📷 Take Photo (Camera)
               </Button>
               <Button variant="outline" style={{ padding: 'var(--space-4)' }} onClick={() => fileInputRef.current?.click()}>
                 🖼️ Choose from Gallery / Files
               </Button>
-              <Button variant="outline" style={{ marginTop: 'var(--space-2)', border: 'none' }} onClick={() => { setShowActionSheet(false); setDispatchType(null); }}>
+              <Button variant="outline" style={{ marginTop: 'var(--space-2)', border: 'none' }} onClick={() => setShowActionSheet(false)}>
                 Cancel
               </Button>
             </div>
@@ -1532,10 +1599,10 @@ export const Bookings = () => {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
         <SegmentedControl
           options={[
-            { label: 'Ongoing', value: 'ongoing' },
+            { label: 'Pending', value: 'pending' },
             { label: 'Completed', value: 'completed' },
           ]}
-          value={tab === 'new' ? 'ongoing' : tab}
+          value={tab === 'new' ? 'pending' : tab}
           onChange={(val) => { setTab(val); setView('list'); setWizardStep(1); }}
         />
         <Button

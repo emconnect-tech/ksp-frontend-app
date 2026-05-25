@@ -15,7 +15,7 @@ export const AdminSettings = () => {
 
   const [showAddProduct, setShowAddProduct] = useState(false);
   const { token } = useAuth();
-  const { canDelete, canManageCatalog } = usePermissions();
+  const { canDelete, canManageCatalog, canManageUsers } = usePermissions();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
   // Products state
@@ -773,7 +773,7 @@ export const AdminSettings = () => {
       <SegmentedControl
         options={[
           { label: 'Catalog', value: 'catalog' },
-          { label: 'Users & Access', value: 'users' },
+          ...(canManageUsers ? [{ label: 'Users & Access', value: 'users' }] : []),
           { label: 'Masters', value: 'masters' },
         ]}
         value={tab}

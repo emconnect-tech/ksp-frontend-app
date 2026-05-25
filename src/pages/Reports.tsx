@@ -15,6 +15,7 @@ export const Reports = () => {
 
   const [stats, setStats] = useState<{ totalCustomers: number; todayOrdersCount: number } | null>(null);
   const [stockRows, setStockRows] = useState<any[]>([]);
+  const [pendingTiles, setPendingTiles] = useState<Array<{ label: string; totalBundles: number; orderCount: number }>>([]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/v1/dashboard/stats`, {
@@ -62,6 +63,30 @@ export const Reports = () => {
         });
       });
       setStockRows(rows);
+
+      // Pending delivery tiles
+      const today = new Date().toISOString().split('T')[0];
+      const statsMap: Record<string, { label: string; totalBundles: number; orderCount: number }> = {};
+      orders
+        .filter((o: any) => {
+          const orderDate = o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : today;
+          return o.statusName !== 'COMPLETED' || orderDate < today;
+        })
+        .forEach((o: any) => {
+          (o.items || []).forEach((i: any) => {
+            if (!i.productVariantId) return;
+            const key = String(i.productVariantId);
+            let label = key;
+            for (const p of products) {
+              const v = p.variants?.find((v: any) => String(v.id) === key);
+              if (v) { label = `${p.name} • ${v.size ?? ''}`; break; }
+            }
+            if (!statsMap[key]) statsMap[key] = { label, totalBundles: 0, orderCount: 0 };
+            statsMap[key].totalBundles += i.noOfBundles || 0;
+            statsMap[key].orderCount += 1;
+          });
+        });
+      setPendingTiles(Object.values(statsMap).filter(s => s.totalBundles > 0));
     }).catch(() => {});
   }, [token]);
 
@@ -97,6 +122,27 @@ export const Reports = () => {
           </div>
         </Card>
       </div>
+
+      {/* Pending Deliveries */}
+      {pendingTiles.length > 0 && (
+        <section style={{ marginBottom: 'var(--space-8)' }}>
+          <h3 style={{ fontSize: '1rem', marginBottom: 'var(--space-4)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <Package size={20} color="var(--color-primary)" />
+            Pending Deliveries
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-2)' }}>
+            {pendingTiles.map((s, i) => (
+              <Card key={i} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', border: 'none' }}>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-text-muted)', lineHeight: 1.3, marginBottom: '4px' }}>{s.label}</p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-primary)' }}>
+                  {s.totalBundles} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--color-text-muted)' }}>bundles</span>
+                </p>
+                {s.orderCount > 1 && <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>across {s.orderCount} orders</p>}
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Stock Sufficiency (Inventory vs Demand) */}
       <section style={{ marginBottom: 'var(--space-8)' }}>

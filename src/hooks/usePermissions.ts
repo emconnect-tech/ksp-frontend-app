@@ -1,5 +1,5 @@
 import { useAuth } from '../contexts/AuthContext';
-import { ROLES_WITH_DELETE, ROLES_WITH_EDIT, ROLES_WITH_CATALOG_MANAGE } from '../config/permissions';
+import { ROLES_WITH_DELETE, ROLES_WITH_EDIT, ROLES_WITH_CATALOG_MANAGE, ROLES_WITH_USER_MANAGE } from '../config/permissions';
 
 export const usePermissions = () => {
   const { user } = useAuth();
@@ -8,5 +8,6 @@ export const usePermissions = () => {
     canDelete: ROLES_WITH_DELETE.includes(role),
     canEdit: ROLES_WITH_EDIT.includes(role),
     canManageCatalog: ROLES_WITH_CATALOG_MANAGE.includes(role),
+    canManageUsers: ROLES_WITH_USER_MANAGE.includes(role),
   };
 };
