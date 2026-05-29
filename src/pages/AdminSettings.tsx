@@ -20,7 +20,7 @@ export const AdminSettings = () => {
 
   // Products state
   const [products, setProducts] = useState<any[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [_loadingProducts, setLoadingProducts] = useState(false);
 
   // Users state
   const [users, setUsers] = useState<any[]>([]);

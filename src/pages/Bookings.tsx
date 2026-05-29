@@ -803,7 +803,6 @@ export const Bookings = () => {
       if (!phase) return null;
 
       const isCurrent = effectiveIdx === currentIdx;
-      const isPast    = effectiveIdx < currentIdx;
       const isFuture  = effectiveIdx > currentIdx;
       const isEditable = !isFuture && selectedOrder.phase !== 'Dispatched' && selectedOrder.phase !== 'Completed';
 
@@ -1549,7 +1548,7 @@ export const Bookings = () => {
           position: 'fixed', bottom: 0, left: 0, right: 0, top: 0,
           background: 'rgba(0,0,0,0.5)', zIndex: 1000,
           display: 'flex', alignItems: 'flex-end'
-        }} onClick={() => { setShowActionSheet(false); setDispatchType(null); }}>
+        }} onClick={() => { setShowActionSheet(false); }}>
           <div style={{
             width: '100%', background: 'white', 
             borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',

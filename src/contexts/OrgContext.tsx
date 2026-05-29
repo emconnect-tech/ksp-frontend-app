@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext } from 'react';
 import type { OrgTheme } from '../config/orgThemes';
 import { getOrgTheme, applyTheme } from '../config/orgThemes';
 

@@ -4,10 +4,10 @@ import { Button } from '../../design-system/components/ui/Button';
 
 interface CustomerFormProps {
   initialData?: {
-    name: string;
-    phone: string;
-    email: string;
-    address: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
   };
   onSubmit: (data: any) => void;
   onCancel: () => void;
