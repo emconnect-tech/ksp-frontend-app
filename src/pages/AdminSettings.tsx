@@ -17,6 +17,7 @@ export const AdminSettings = () => {
     return params.get('tab') || 'catalog';
   });
   const [catalogView, setCatalogView] = useState<'products' | 'rawMaterials'>('products');
+  const [catalogSearch, setCatalogSearch] = useState('');
 
   const [showAddProduct, setShowAddProduct] = useState(false);
   const { token } = useAuth();
@@ -514,8 +515,22 @@ export const AdminSettings = () => {
     </div>
   );
 
-  const renderProductsCatalog = () => (
+  const renderProductsCatalog = () => {
+    const q = catalogSearch.toLowerCase();
+    const filteredProducts = products.filter(p =>
+      !q ||
+      p.name?.toLowerCase().includes(q) ||
+      p.description?.toLowerCase().includes(q) ||
+      p.variants?.some((v: any) => v.size?.toLowerCase().includes(q) || String(v.gsm || '').includes(q))
+    );
+    return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      <Input
+        type="text"
+        placeholder="Search products, variants, GSM..."
+        value={catalogSearch}
+        onChange={e => setCatalogSearch(e.target.value)}
+      />
       {!showAddProduct ? (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0 }}>Products & Variants</h3>
@@ -537,7 +552,10 @@ export const AdminSettings = () => {
         </Card>
       )}
 
-      {products.map((product) => (
+      {filteredProducts.length === 0 && q && (
+        <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>No products match "{catalogSearch}"</p>
+      )}
+      {filteredProducts.map((product) => (
         <Card key={product.id} style={{ padding: 'var(--space-4)', opacity: product.isActive ? 1 : 0.6 }}>
           <div style={{ marginBottom: 'var(--space-3)' }}>
             {editingProductId === product.id ? (
@@ -637,15 +655,32 @@ export const AdminSettings = () => {
         </Card>
       ))}
     </div>
-  );
+    );
+  };
 
-  const renderRawMaterialsCatalog = () => (
+  const renderRawMaterialsCatalog = () => {
+    const q = catalogSearch.toLowerCase();
+    const filteredRmTypes = rawMaterialTypes.filter((t: any) =>
+      !q ||
+      t.name?.toLowerCase().includes(q) ||
+      t.description?.toLowerCase().includes(q) ||
+      t.variants?.some((v: any) =>
+        v.spec?.toLowerCase().includes(q) || String(v.gsm || '').includes(q)
+      )
+    );
+    return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      <Input
+        type="text"
+        placeholder="Search rolls, GSM, size..."
+        value={catalogSearch}
+        onChange={e => setCatalogSearch(e.target.value)}
+      />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 style={{ margin: 0 }}>Raw Material Types</h3>
+        <h3 style={{ margin: 0 }}>Rolls Godown</h3>
         {canManageCatalog && !showAddRmType && (
           <Button variant="primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => setShowAddRmType(true)}>
-            + Add Type
+            + Add Roll Type
           </Button>
         )}
       </div>
@@ -662,7 +697,10 @@ export const AdminSettings = () => {
         </Card>
       )}
 
-      {rawMaterialTypes.map((rmType: any) => (
+      {filteredRmTypes.length === 0 && q && (
+        <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>No rolls match "{catalogSearch}"</p>
+      )}
+      {filteredRmTypes.map((rmType: any) => (
         <Card key={rmType.id} style={{ padding: 'var(--space-4)', opacity: rmType.isActive ? 1 : 0.6 }}>
           <div style={{ marginBottom: 'var(--space-3)' }}>
             {editingRmTypeId === rmType.id ? (
@@ -761,10 +799,11 @@ export const AdminSettings = () => {
       ))}
 
       {rawMaterialTypes.length === 0 && (
-        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>No raw material types defined yet.</p>
+        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>No rolls defined yet.</p>
       )}
     </div>
-  );
+    );
+  };
 
   const renderWhatsAppTab = () => {
     if (config.WHATSAPP_TYPE === 'msg91') {
@@ -915,16 +954,16 @@ export const AdminSettings = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <button
-                onClick={() => setCatalogView('products')}
+                onClick={() => { setCatalogView('products'); setCatalogSearch(''); }}
                 style={{ padding: '6px 16px', borderRadius: 'var(--radius-md)', border: '1px solid', fontSize: '0.85rem', cursor: 'pointer', fontWeight: catalogView === 'products' ? 600 : 400, background: catalogView === 'products' ? 'var(--color-primary)' : 'transparent', color: catalogView === 'products' ? 'white' : 'var(--color-text-muted)', borderColor: catalogView === 'products' ? 'var(--color-primary)' : 'var(--color-border)' }}
               >
                 Products
               </button>
               <button
-                onClick={() => setCatalogView('rawMaterials')}
+                onClick={() => { setCatalogView('rawMaterials'); setCatalogSearch(''); }}
                 style={{ padding: '6px 16px', borderRadius: 'var(--radius-md)', border: '1px solid', fontSize: '0.85rem', cursor: 'pointer', fontWeight: catalogView === 'rawMaterials' ? 600 : 400, background: catalogView === 'rawMaterials' ? 'var(--color-primary)' : 'transparent', color: catalogView === 'rawMaterials' ? 'white' : 'var(--color-text-muted)', borderColor: catalogView === 'rawMaterials' ? 'var(--color-primary)' : 'var(--color-border)' }}
               >
-                Raw Materials
+                Rolls Godown
               </button>
             </div>
             {catalogView === 'products' ? renderProductsCatalog() : renderRawMaterialsCatalog()}
