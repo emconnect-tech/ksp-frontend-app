@@ -10,7 +10,7 @@ import { Customers } from './pages/Customers';
 import { Reports } from './pages/Reports';
 import { AuthProvider } from './contexts/AuthContext';
 import { OrgProvider } from './contexts/OrgContext';
-import { ProtectedRoute, PublicRoute } from './components/auth/RouteGuards';
+import { ProtectedRoute, PublicRoute, AdminRoute } from './components/auth/RouteGuards';
 import { PendingApproval } from './pages/PendingApproval';
 import { Suspended } from './pages/Suspended';
 
@@ -36,7 +36,9 @@ function App() {
               <Route path="bookings" element={<Bookings />} />
               <Route path="customers" element={<Customers />} />
               <Route path="reports" element={<Reports />} />
-              <Route path="profile" element={<AdminSettings />} />
+              <Route element={<AdminRoute />}>
+                <Route path="profile" element={<AdminSettings />} />
+              </Route>
             </Route>
           </Route>
 

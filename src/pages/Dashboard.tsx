@@ -47,11 +47,14 @@ export const Dashboard = () => {
     { label: 'Admin', icon: <ShieldCheck size={20} color="var(--color-primary)" />, path: '/profile', module: 'Admin' },
   ];
 
+  const roleModuleAccess: Record<string, string[]> = {
+    STAFF: ['Bookings', 'Stock-In', 'Reports'],
+    PRODUCTION: ['Materials'],
+  };
+
   const visibleModules = allModules.filter(m => {
     if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') return true;
-    if (user?.role === 'PRODUCTION' && m.module === 'Materials') return true;
-    if (user?.role === 'STAFF' && m.module === 'Stock-In') return true;
-    return false;
+    return roleModuleAccess[user?.role ?? '']?.includes(m.module) ?? false;
   });
 
   return (

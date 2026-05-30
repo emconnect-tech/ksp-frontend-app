@@ -10,7 +10,9 @@ import { ProductVariantPicker } from '../components/ProductVariantPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useOrg } from '../contexts/OrgContext';
 import { usePermissions } from '../hooks/usePermissions';
+import { useNavigate } from 'react-router-dom';
 import { config } from '../config';
+import { buildEnquiryMessage, buildQuotationMessage, buildStatusUpdateMessage } from '../config/messageTemplates';
 import { fetchOrders, createOrderAPI, updateOrderWeightsAPI, updateOrderStatusAPI, fetchOrderByIdAPI } from '../api';
 
 // Lifecycle Phases
@@ -44,17 +46,48 @@ export const Bookings = () => {
   const [customersList, setCustomersList] = useState<any[]>([]);
   const [productsList, setProductsList] = useState<any[]>([]);
   const [statusMap, setStatusMap] = useState<Record<string, string>>({}); // name -> id
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { theme } = useOrg();
   const orgName = theme.displayName || 'Portal';
   const { canDelete } = usePermissions();
+  const navigate = useNavigate();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+  // WhatsApp connection status
+  const [waConnected, setWaConnected] = useState<boolean | null>(null);
+  const [showWaModal, setShowWaModal] = useState(false);
+  // Per-phase notification status: key = `${orderId}:${phase}`
+  const [notifStatus, setNotifStatus] = useState<Record<string, 'sent' | 'failed'>>({});
 
   useEffect(() => {
     loadOrders();
     loadMasterData();
     loadStatuses();
+    checkWaStatus();
   }, []);
+
+  const checkWaStatus = async () => {
+    if (config.WHATSAPP_TYPE === 'none') { setWaConnected(false); return; }
+    if (config.WHATSAPP_TYPE === 'msg91') { setWaConnected(true); return; }
+    try {
+      const res = await fetch(`${config.WHATSAPP_WEB_URL}/status`);
+      if (!res.ok) { setWaConnected(false); return; }
+      const { status } = await res.json();
+      setWaConnected(status === 'connected');
+    } catch {
+      setWaConnected(false);
+    }
+  };
+
+  // Re-resolve customer name/phone once customersList is populated
+  useEffect(() => {
+    if (customersList.length === 0) return;
+    setOrders(prev => prev.map(o => {
+      const cust = customersList.find((c: any) => c.id === o.customerId);
+      if (!cust) return o;
+      return { ...o, customer: cust.name, customerPhone: cust.phoneNumber || null, customerPlace: cust.place || null };
+    }));
+  }, [customersList]);
 
   const loadStatuses = async () => {
     if (config.USE_MOCK_API) return;
@@ -122,7 +155,9 @@ export const Bookings = () => {
           id: o.id || o.orderNumber,
           orderNumber: o.orderNumber,
           customerId: o.customerId,
-          customer: o.customerId ? 'Customer ' + o.customerId.substring(0, 4) : 'Unknown',
+          customer: customersList.find((c: any) => c.id === o.customerId)?.name || o.customerId || 'Unknown',
+          customerPhone: customersList.find((c: any) => c.id === o.customerId)?.phoneNumber || null,
+          customerPlace: customersList.find((c: any) => c.id === o.customerId)?.place || null,
           items: o.items?.length || 0,
           totalWeight: o.totalWeightKg ? `${o.totalWeightKg} kg` : 'Pending',
           amount: `₹${(o.totalAmount || 0).toLocaleString()}`,
@@ -158,6 +193,27 @@ export const Bookings = () => {
     }
   }, [orders]);
 
+  // Maps backend order status names → frontend phase names
+  const backendStatusToPhase: Record<string, string[]> = {
+    QUOTATION:  ['Order Created', 'Weights Added', 'Quotation Generated'],
+    CONFIRMED:  ['Bill Uploaded'],
+    DISPATCHED: ['Partially Dispatched', 'Dispatched'],
+    COMPLETED:  ['Completed'],
+  };
+
+  const seedNotifStatusFromOrder = (orderId: string, waStatus: Record<string, any>) => {
+    if (!waStatus) return;
+    const patch: Record<string, 'sent' | 'failed'> = {};
+    for (const [backendStatus, entry] of Object.entries(waStatus)) {
+      const phases = backendStatusToPhase[backendStatus] || [];
+      for (const phase of phases) {
+        const key = `${orderId}:${phase}`;
+        patch[key] = entry?.status === 'SENT' ? 'sent' : 'failed';
+      }
+    }
+    setNotifStatus(prev => ({ ...prev, ...patch }));
+  };
+
   const handleViewDetails = async (order: any) => {
     setSelectedOrder(order);
     setView('details');
@@ -165,6 +221,7 @@ export const Bookings = () => {
       const full = await fetchOrderByIdAPI(order.id);
       if (full) {
         setSelectedOrder((prev: any) => ({ ...prev, attachments: full.attachments || [] }));
+        seedNotifStatusFromOrder(String(order.id), full.waNotificationStatus || {});
       }
     } catch (e) {
       console.error('Failed to fetch order details', e);
@@ -328,6 +385,14 @@ export const Bookings = () => {
       setDialogState({ title: 'Error', message: 'Failed to save weights.' });
     }
 
+    // Reset WA delivery ticks for all phases — weights changed, prior messages are stale
+    if (activeOrderId) {
+      setNotifStatus(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(k => { if (k.startsWith(`${activeOrderId}:`)) delete next[k]; });
+        return next;
+      });
+    }
     setShowAddWeightsModal(false);
     setActiveOrderId(null);
   };
@@ -391,22 +456,39 @@ export const Bookings = () => {
     }
   };
 
-  const handleResendToCustomer = (phase: string) => {
+  const handleResendToCustomer = async (phase: string) => {
     if (!selectedOrder) return;
-    const base = `*${orgName} Order Update - #${selectedOrder.orderNumber || selectedOrder.id}*\nCustomer: ${selectedOrder.customer}\n\n`;
-    const messages: Record<string, string> = {
-      'Order Created':          `Your order has been created.\n\nItems: ${selectedOrder.items} Bundles\nDate: ${selectedOrder.date}`,
-      'Weights Added':          `Weights have been recorded for your order.\n\nTotal Weight: ${selectedOrder.totalWeight}`,
-      'Quotation Generated':    `Your quotation is ready.\n\nTotal: ${selectedOrder.amount}\n\n_Reply to confirm._`,
-      'Bill Uploaded':          `Your bill has been prepared.\n\nTotal: ${selectedOrder.amount}\n\n_Contact us for any queries._`,
-      'Partially Dispatched':   `Partial shipment has been dispatched.\n\nTotal: ${selectedOrder.amount}`,
-      'Dispatched':             `Your order has been fully dispatched.\n\nTotal: ${selectedOrder.amount}`,
-      'Completed':              `Your order is complete. Thank you!\n\nTotal: ${selectedOrder.amount}`,
-    };
-    const body = messages[phase] ?? `Order status: ${phase}`;
-    const message = base + body + `\n\n_${orgName} Portal_`;
+    const notifKey = `${selectedOrder.id}:${phase}`;
+
+    // Re-check live WA status before sending
+    await checkWaStatus();
+    if (!waConnected) {
+      setShowWaModal(true);
+      return;
+    }
+
+    if (config.WHATSAPP_TYPE !== 'none') {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/orders/${selectedOrder.id}/notify`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        setNotifStatus(prev => ({ ...prev, [notifKey]: res.ok ? 'sent' : 'failed' }));
+      } catch (e) {
+        console.error('Failed to send WhatsApp update', e);
+        setNotifStatus(prev => ({ ...prev, [notifKey]: 'failed' }));
+      }
+      return;
+    }
+
+    // Fallback: open WhatsApp Web
+    const message = buildStatusUpdateMessage(orgName, {
+      ...selectedOrder,
+      itemsList: (selectedOrder.itemsList || []).map((item: any) => ({ ...item, ...getVariantInfo(item.variantId) })),
+    }, phase);
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
     if (navigator.clipboard) navigator.clipboard.writeText(message);
+    setNotifStatus(prev => ({ ...prev, [notifKey]: 'sent' }));
   };
 
   const handleAddItemToOrder = async () => {
@@ -581,28 +663,27 @@ export const Bookings = () => {
     }
   };
 
-  const handleShareQuotation = (order: any) => {
-    const itemsText = order.itemsList.map((item: any) => {
-      const totalWt = Array.isArray(item.weights) 
-        ? item.weights.reduce((a: number, b: number) => a + (parseFloat(b as any) || 0), 0)
-        : (item.weight || 0);
-      const weightStr = totalWt > 0 ? ` (${totalWt} kg)` : '';
-      return `• ${getVariantInfo(item.variantId).label}: ${item.qty} Bundles${weightStr}`;
-    }).join('\n');
-
-    const message = `*${orgName} Quotation - #${order.id}*\n` +
-      `Customer: ${order.customer}\n` +
-      `Date: ${order.date}\n\n` +
-      `*Items:*\n${itemsText}\n\n` +
-      `*Total Amount: ${order.amount}*\n\n` +
-      `_Generated via ${orgName} Portal_`;
+  const handleShareQuotation = async (order: any) => {
+    if (config.WHATSAPP_TYPE !== 'none') {
+      try {
+        await fetch(`${API_BASE_URL}/api/v1/orders/${order.id}/notify`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+      } catch (e) {
+        console.error('Failed to send WhatsApp quotation', e);
+      }
+      return;
+    }
+    // Fallback: open WhatsApp Web when no provider configured
+    const message = buildQuotationMessage(orgName, {
+      ...order,
+      itemsList: order.itemsList.map((item: any) => ({ ...item, ...getVariantInfo(item.variantId) })),
+    });
 
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/?text=${encoded}`, '_blank');
-    
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(message);
-    }
+    if (navigator.clipboard) navigator.clipboard.writeText(message);
   };
 
   const [orderItems, setOrderItems] = useState([
@@ -610,9 +691,14 @@ export const Bookings = () => {
   ]);
 
   const handleConfirmBooking = async () => {
+    if (orderItems.some(i => !i.product)) {
+      setDialogState({ title: 'Missing Product', message: 'Please select a product for every item before creating the order.' });
+      return;
+    }
+
     const cust = customersList.find(c => c.id === selectedCustomer);
     const customerName = cust ? cust.name : 'Unknown Client';
-    
+
     const totalQty = orderItems.reduce((sum, item) => sum + item.qty, 0);
     
     const payload = {
@@ -661,26 +747,15 @@ export const Bookings = () => {
   };
 
   const handleShareEnquiry = () => {
-    const itemsText = orderItems.map((item: any) => {
-      return `• ${item.product}: ${item.qty} Bundles`;
-    }).join('\n');
-
-    const totalAmt = orderItems.reduce((sum, item) => sum + (item.qty * item.rate), 0);
     const cust = customersList.find(c => c.id === selectedCustomer);
     const customerName = cust ? cust.name : 'New Client';
-
-    const message = `*${orgName} Enquiry - Quotation Template*\n` +
-      `Customer: ${customerName}\n\n` +
-      `*Proposed Items:*\n${itemsText}\n\n` +
-      `*Estimated Total: ₹${totalAmt.toLocaleString()}*\n\n` +
-      `_This is a pre-booking enquiry quote._`;
-
-    const encoded = encodeURIComponent(message);
-    window.open(`https://wa.me/?text=${encoded}`, '_blank');
-    
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(message);
-    }
+    const message = buildEnquiryMessage(
+      orgName,
+      customerName,
+      orderItems.map(item => ({ ...getVariantInfo(item.product), qty: item.qty, rate: item.rate })),
+    );
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+    if (navigator.clipboard) navigator.clipboard.writeText(message);
   };
 
   // Renders the list of orders based on the selected tab
@@ -735,7 +810,7 @@ export const Bookings = () => {
               <div>
                 <p style={{ margin: 0, fontWeight: 600 }}>Order #{order.id}</p>
                 <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                  {order.customer} • {order.items} Bundles
+                  {order.customer}{order.customerPhone ? ` • ${order.customerPhone}` : ''} • {order.items} Bundles
                 </p>
                 <p style={{ margin: '2px 0 0', fontSize: '0.85rem', fontWeight: 600 }}>
                   {order.amount}
@@ -1040,14 +1115,30 @@ export const Bookings = () => {
           )}
 
           {/* Send update to customer */}
-          {!isFuture && (
-            <button
-              onClick={() => handleResendToCustomer(phase.phase)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start', background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}
-            >
-              <Share2 size={14} /> Send Update to Customer
-            </button>
-          )}
+          {!isFuture && (() => {
+            const notifKey = `${selectedOrder.id}:${phase.phase}`;
+            const status = notifStatus[notifKey];
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <button
+                  onClick={() => handleResendToCustomer(phase.phase)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}
+                >
+                  <Share2 size={14} />
+                  {status === 'failed' ? 'Retry WhatsApp' : status === 'sent' ? 'Resend WhatsApp' : 'Send WhatsApp Update'}
+                </button>
+                {status === 'sent' && (
+                  <span title="Sent" style={{ color: '#2f9e44', fontSize: '1rem', fontWeight: 700 }}>✓</span>
+                )}
+                {status === 'failed' && (
+                  <span title="Failed to send" style={{ color: '#fa5252', fontSize: '1rem', fontWeight: 700 }}>✗</span>
+                )}
+                {waConnected === false && (
+                  <span style={{ fontSize: '0.72rem', color: '#fa5252' }}>WhatsApp not connected</span>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Action button — current phase only */}
           {isCurrent && phase.action && (
@@ -1276,7 +1367,7 @@ export const Bookings = () => {
 
             <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
               <Button variant="outline" onClick={() => setWizardStep(1)} style={{ flex: 1 }}>Back</Button>
-              <Button variant="primary" onClick={() => setWizardStep(3)} style={{ flex: 2 }}>Next: Review Quote</Button>
+              <Button variant="primary" onClick={() => setWizardStep(3)} style={{ flex: 2 }} disabled={orderItems.some(i => !i.product)}>Next: Review Quote</Button>
             </div>
           </div>
         )}
@@ -1369,6 +1460,34 @@ export const Bookings = () => {
         </div>
       )}
 
+      {/* WhatsApp Not Connected Modal */}
+      {showWaModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
+          <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: '320px', width: '100%' }}>
+            <div style={{ fontSize: '2rem', textAlign: 'center', marginBottom: 'var(--space-3)' }}>📵</div>
+            <h3 style={{ margin: '0 0 var(--space-2) 0', fontSize: '1rem', textAlign: 'center' }}>WhatsApp Not Connected</h3>
+            {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') ? (
+              <>
+                <p style={{ margin: '0 0 var(--space-5) 0', fontSize: '0.875rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                  Scan the QR code in Settings to link your WhatsApp account.
+                </p>
+                <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                  <Button variant="outline" style={{ flex: 1 }} onClick={() => setShowWaModal(false)}>Cancel</Button>
+                  <Button variant="primary" style={{ flex: 1 }} onClick={() => { setShowWaModal(false); navigate('/profile?tab=whatsapp'); }}>Go to Settings</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 var(--space-5) 0', fontSize: '0.875rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                  WhatsApp is not connected. Please ask your admin to link WhatsApp in Settings.
+                </p>
+                <Button variant="primary" style={{ width: '100%' }} onClick={() => setShowWaModal(false)}>OK</Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Customer Details Modal */}
       {showCustomerModal && (
         <div style={{
@@ -1384,14 +1503,18 @@ export const Bookings = () => {
                 <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Name</label>
                 <div style={{ fontWeight: 600 }}>{selectedOrder?.customer}</div>
               </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Phone</label>
-                <div style={{ fontWeight: 600 }}>+91 9876543210</div>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Shipping Address</label>
-                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>123, Industrial Area Phase II, Bangalore, KA - 560001</div>
-              </div>
+              {selectedOrder?.customerPhone && (
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Phone</label>
+                  <div style={{ fontWeight: 600 }}>{selectedOrder.customerPhone}</div>
+                </div>
+              )}
+              {selectedOrder?.customerPlace && (
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Place / Address</label>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{selectedOrder.customerPlace}</div>
+                </div>
+              )}
             </div>
             <Button variant="primary" style={{ width: '100%', marginTop: 'var(--space-6)' }} onClick={() => setShowCustomerModal(false)}>
               Close

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
@@ -10,7 +11,11 @@ import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
 
 export const AdminSettings = () => {
-  const [tab, setTab] = useState('catalog');
+  const location = useLocation();
+  const [tab, setTab] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('tab') || 'catalog';
+  });
   const [catalogView, setCatalogView] = useState<'products' | 'rawMaterials'>('products');
 
   const [showAddProduct, setShowAddProduct] = useState(false);
@@ -38,6 +43,10 @@ export const AdminSettings = () => {
   const [editGsmValue, setEditGsmValue] = useState('');
   const [editGsmLabel, setEditGsmLabel] = useState('');
 
+  // WhatsApp state
+  const [waStatus, setWaStatus] = useState<'connected' | 'qr_pending' | 'disconnected' | 'loading'>('loading');
+  const [waQr, setWaQr] = useState<string | null>(null);
+
   // Raw Material Types state
   const [rawMaterialTypes, setRawMaterialTypes] = useState<any[]>([]);
   const [showAddRmType, setShowAddRmType] = useState(false);
@@ -63,8 +72,40 @@ export const AdminSettings = () => {
     } else if (tab === 'masters') {
       fetchStatuses();
       fetchGsmList();
+    } else if (tab === 'whatsapp') {
+      fetchWaStatus();
     }
   }, [tab, searchQuery]);
+
+  // Auto-poll every 5s while QR is pending or connecting
+  useEffect(() => {
+    if (tab !== 'whatsapp' || waStatus === 'connected') return;
+    const interval = setInterval(fetchWaStatus, 5000);
+    return () => clearInterval(interval);
+  }, [tab, waStatus]);
+
+  // --- WhatsApp ---
+  const fetchWaStatus = async () => {
+    try {
+      const statusRes = await fetch(`${config.WHATSAPP_WEB_URL}/status`);
+      if (!statusRes.ok) { setWaStatus('disconnected'); return; }
+      const { status } = await statusRes.json();
+
+      if (status === 'qr_pending') {
+        const tokenParam = config.WHATSAPP_ADMIN_TOKEN ? `?token=${config.WHATSAPP_ADMIN_TOKEN}` : '';
+        const qrRes = await fetch(`${config.WHATSAPP_WEB_URL}/qr${tokenParam}`);
+        if (qrRes.ok) {
+          const { qr } = await qrRes.json();
+          setWaQr(qr);
+        }
+      } else {
+        setWaQr(null);
+      }
+      setWaStatus(status);
+    } catch {
+      setWaStatus('disconnected');
+    }
+  };
 
   // --- GSM ---
   const fetchGsmList = async () => {
@@ -725,6 +766,77 @@ export const AdminSettings = () => {
     </div>
   );
 
+  const renderWhatsAppTab = () => {
+    if (config.WHATSAPP_TYPE === 'msg91') {
+      return (
+        <Card style={{ padding: 'var(--space-6)' }}>
+          <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>WhatsApp — MSG91</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+            <p style={{ margin: 0 }}>Provider is set to <strong>MSG91</strong>. Messages are sent via the MSG91 API using pre-approved WhatsApp Business templates.</p>
+            <p style={{ margin: 0 }}>No QR scan required. Configure <code>msg91.auth-key</code> and template names in <code>application.properties</code> on the server.</p>
+          </div>
+        </Card>
+      );
+    }
+
+    return (
+      <Card style={{ padding: 'var(--space-6)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
+          <h3 style={{ margin: 0 }}>WhatsApp Connection</h3>
+          <Button variant="outline" style={{ fontSize: '0.8rem', padding: '4px 12px' }} onClick={fetchWaStatus}>
+            Refresh
+          </Button>
+        </div>
+
+        {waStatus === 'loading' && (
+          <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: 'var(--space-6)' }}>Checking connection...</p>
+        )}
+
+        {waStatus === 'connected' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)', padding: 'var(--space-6)' }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#e6f9f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', color: '#2f9e44' }}>✓</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#2f9e44' }}>WhatsApp Connected</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                Order updates and OTPs will be sent from the linked admin account.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {waStatus === 'qr_pending' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)' }}>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)', textAlign: 'center', maxWidth: 320 }}>
+              Open WhatsApp on your phone → <strong>Linked Devices</strong> → <strong>Link a Device</strong>, then scan this QR code.
+            </p>
+            {waQr ? (
+              <img src={waQr} alt="WhatsApp QR Code" style={{ width: 240, height: 240, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }} />
+            ) : (
+              <div style={{ width: 240, height: 240, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                Loading QR...
+              </div>
+            )}
+            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+              QR refreshes automatically every 5 seconds. Once scanned, this page will show Connected.
+            </p>
+          </div>
+        )}
+
+        {waStatus === 'disconnected' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)', padding: 'var(--space-6)' }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', color: '#fa5252' }}>!</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#fa5252' }}>Service Unreachable</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                WhatsApp service is offline. Make sure it is running and try again.
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   return (
     <div className="page-content">
       {confirmDelete && (
@@ -775,6 +887,7 @@ export const AdminSettings = () => {
           { label: 'Catalog', value: 'catalog' },
           ...(canManageUsers ? [{ label: 'Users & Access', value: 'users' }] : []),
           { label: 'Masters', value: 'masters' },
+          ...(canManageUsers && config.WHATSAPP_TYPE !== 'none' ? [{ label: 'WhatsApp', value: 'whatsapp' }] : []),
         ]}
         value={tab}
         onChange={setTab}
@@ -802,6 +915,8 @@ export const AdminSettings = () => {
         )}
 
         {tab === 'users' && renderUsersTab()}
+
+        {tab === 'whatsapp' && renderWhatsAppTab()}
 
         {tab === 'masters' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>

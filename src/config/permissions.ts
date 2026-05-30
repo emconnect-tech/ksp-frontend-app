@@ -1,5 +1,5 @@
 // Roles that can delete records.
-export const ROLES_WITH_DELETE: string[] = ['ADMIN', 'SUPER_ADMIN', 'STAFF'];
+export const ROLES_WITH_DELETE: string[] = ['ADMIN', 'SUPER_ADMIN'];
 
 // Roles that can edit records.
 export const ROLES_WITH_EDIT: string[] = ['ADMIN', 'SUPER_ADMIN', 'STAFF', 'PRODUCTION'];

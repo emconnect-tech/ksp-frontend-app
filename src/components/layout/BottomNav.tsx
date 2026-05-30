@@ -13,10 +13,14 @@ export const BottomNav = () => {
     { to: '/profile', icon: <User size={22} />, label: 'Admin', module: 'Admin' },
   ];
 
+  const roleModuleAccess: Record<string, string[]> = {
+    STAFF: ['Home', 'Bookings', 'Reports'],
+    PRODUCTION: ['Home'],
+  };
+
   const filteredItems = navItems.filter(item => {
-    if (item.module === 'Home') return true;
     if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') return true;
-    return false;
+    return roleModuleAccess[user?.role ?? '']?.includes(item.module) ?? false;
   });
 
   return (

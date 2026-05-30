@@ -23,6 +23,13 @@ export const ProtectedRoute = () => {
   return <Outlet />;
 };
 
+export const AdminRoute = () => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  return isAdmin ? <Outlet /> : <Navigate to="/" replace />;
+};
+
 export const PublicRoute = () => {
   const { isAuthenticated, loading } = useAuth();
 
