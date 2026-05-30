@@ -801,6 +801,23 @@ export const AdminSettings = () => {
                 Order updates and OTPs will be sent from the linked admin account.
               </div>
             </div>
+            <Button
+              variant="outline"
+              style={{ color: '#fa5252', borderColor: '#fa5252', fontSize: '0.85rem' }}
+              onClick={async () => {
+                if (!window.confirm('Disconnect WhatsApp? You will need to scan a new QR code to reconnect.')) return;
+                try {
+                  const tokenParam = config.WHATSAPP_ADMIN_TOKEN ? `?token=${config.WHATSAPP_ADMIN_TOKEN}` : '';
+                  await fetch(`${config.WHATSAPP_WEB_URL}/logout${tokenParam}`, { method: 'POST' });
+                  setWaStatus('loading');
+                  setTimeout(fetchWaStatus, 2500);
+                } catch (e) {
+                  console.error('Logout failed', e);
+                }
+              }}
+            >
+              Disconnect &amp; Scan New Number
+            </Button>
           </div>
         )}
 
