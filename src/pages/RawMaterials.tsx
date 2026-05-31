@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
@@ -54,6 +55,7 @@ export const RawMaterials = () => {
 
   const { token } = useAuth();
   const { canDelete, canEdit } = usePermissions();
+  const navigate = useNavigate();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
   const fetchEntries = async () => {
@@ -103,12 +105,31 @@ export const RawMaterials = () => {
   };
 
   useEffect(() => {
+    // Restore direction from URL on mount
+    const params = new URLSearchParams(window.location.search);
+    const dir = params.get('dir');
+    if (dir === 'out') setDirection('out');
     fetchEntries();
     fetch(`${API_BASE_URL}/api/v1/raw-material-types`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : []).then(setRawMaterialTypes).catch(() => {});
     fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : []).then(setGsmList).catch(() => {});
   }, []);
+
+  // Restore detail view from URL after entries load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    const dir = params.get('dir');
+    if (!id) return;
+    if (dir === 'out' && outView !== 'details') {
+      const entry = outEntries.find(e => String(e.id) === id);
+      if (entry) { setSelectedOutEntry(entry); setOutIsEditing(false); setOutView('details'); }
+    } else if (dir !== 'out' && view !== 'details') {
+      const entry = entries.find(e => String(e.id) === id);
+      if (entry) { setSelectedEntry(entry); setIsEditing(false); setView('details'); }
+    }
+  }, [entries, outEntries]);
 
   const findRmVariant = (variantId: string) => {
     for (const t of rawMaterialTypes) {
@@ -236,7 +257,7 @@ export const RawMaterials = () => {
     try {
       await fetch(`${API_BASE_URL}/api/v1/raw-materials/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       setEntries(prev => prev.filter(e => e.id !== id));
-      if (selectedEntry?.id === id) setView('list');
+      if (selectedEntry?.id === id) { setView('list'); navigate('/materials?dir=in', { replace: true }); }
     } catch (e) { alert('Failed to delete entry'); }
   };
 
@@ -290,7 +311,7 @@ export const RawMaterials = () => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       {entries.length === 0 && <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>No incoming entries yet.</p>}
       {entries.map((entry) => (
-        <Card key={entry.id} onClick={() => { setSelectedEntry(entry); setIsEditing(false); setView('details'); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}>
+        <Card key={entry.id} onClick={() => { setSelectedEntry(entry); setIsEditing(false); setView('details'); navigate(`/materials?dir=in&id=${entry.id}`, { replace: true }); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}>
           <div>
             <p style={{ margin: 0, fontWeight: 600, fontSize: '1rem' }}>{entry.materialTypeName || 'Raw Material'} — {entry.noOfRolls} Rolls</p>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>{entry.entryDate} • {entry.gsm} GSM • {entry.weightKg}kg</p>
@@ -308,7 +329,7 @@ export const RawMaterials = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <button onClick={() => { setView('list'); setIsEditing(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><ArrowLeft size={24} /></button>
+            <button onClick={() => { setView('list'); setIsEditing(false); navigate('/materials?dir=in', { replace: true }); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><ArrowLeft size={24} /></button>
             <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Raw Material In — Details</h2>
           </div>
           {!isEditing && (
@@ -371,7 +392,7 @@ export const RawMaterials = () => {
             </div>
           )}
         </Card>
-        {!isEditing && <Button variant="outline" style={{ width: '100%' }} onClick={() => setView('list')}>Back to History</Button>}
+        {!isEditing && <Button variant="outline" style={{ width: '100%' }} onClick={() => { setView('list'); navigate('/materials?dir=in', { replace: true }); }}>Back to History</Button>}
       </div>
     );
   };
@@ -455,7 +476,7 @@ export const RawMaterials = () => {
     try {
       await fetch(`${API_BASE_URL}/api/v1/raw-material-out/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       setOutEntries(prev => prev.filter(e => e.id !== id));
-      if (selectedOutEntry?.id === id) setOutView('list');
+      if (selectedOutEntry?.id === id) { setOutView('list'); navigate('/materials?dir=out', { replace: true }); }
     } catch (e) { alert('Failed to delete entry'); }
   };
 
@@ -523,7 +544,7 @@ export const RawMaterials = () => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       {outEntries.length === 0 && <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>No outgoing entries yet.</p>}
       {outEntries.map((entry) => (
-        <Card key={entry.id} onClick={() => { setSelectedOutEntry(entry); setOutIsEditing(false); setOutView('details'); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}>
+        <Card key={entry.id} onClick={() => { setSelectedOutEntry(entry); setOutIsEditing(false); setOutView('details'); navigate(`/materials?dir=out&id=${entry.id}`, { replace: true }); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}>
           <div>
             <p style={{ margin: 0, fontWeight: 600, fontSize: '1rem' }}>{entry.materialTypeName || 'Raw Material'} — {entry.noOfRolls} Rolls</p>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>{entry.entryDate}{entry.gsm ? ` • ${entry.gsm} GSM` : ''}{entry.weightKg ? ` • ${entry.weightKg}kg` : ''}</p>
@@ -540,7 +561,7 @@ export const RawMaterials = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <button onClick={() => { setOutView('list'); setOutIsEditing(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><ArrowLeft size={24} /></button>
+            <button onClick={() => { setOutView('list'); setOutIsEditing(false); navigate('/materials?dir=out', { replace: true }); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><ArrowLeft size={24} /></button>
             <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Raw Material Out — Details</h2>
           </div>
           {!outIsEditing && (
@@ -643,7 +664,7 @@ export const RawMaterials = () => {
             </div>
           )}
         </Card>
-        {!outIsEditing && <Button variant="outline" style={{ width: '100%' }} onClick={() => setOutView('list')}>Back to History</Button>}
+        {!outIsEditing && <Button variant="outline" style={{ width: '100%' }} onClick={() => { setOutView('list'); navigate('/materials?dir=out', { replace: true }); }}>Back to History</Button>}
       </div>
     );
   };

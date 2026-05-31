@@ -193,16 +193,15 @@ export const Bookings = () => {
     }
   };
 
-  // Handle Deep Linking from Dashboard
+  // Sync URL ?id= param with detail view — restore on refresh, update on navigation
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const orderId = params.get('id');
-    if (orderId) {
-      const order = orders.find(o => o.id === orderId);
-      if (order) {
-        setSelectedOrder(order);
-        setView('details');
-      }
+    if (!orderId) return;
+    const order = orders.find(o => String(o.id) === orderId);
+    if (order && view !== 'details') {
+      setSelectedOrder(order);
+      setView('details');
     }
   }, [orders]);
 
@@ -230,6 +229,7 @@ export const Bookings = () => {
   const handleViewDetails = async (order: any) => {
     setSelectedOrder(order);
     setView('details');
+    navigate(`/bookings?id=${order.id}`, { replace: true });
     try {
       const full = await fetchOrderByIdAPI(order.id);
       if (full) {
@@ -627,7 +627,7 @@ export const Bookings = () => {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       setOrders(prev => prev.filter(o => o.id !== orderId));
-      if (selectedOrder?.id === orderId) setView('list');
+      if (selectedOrder?.id === orderId) { setView('list'); navigate('/bookings', { replace: true }); }
     } catch (e) {
       console.error('Failed to delete order', e);
       setDialogState({ title: 'Error', message: 'Failed to delete order.' });
@@ -1315,7 +1315,7 @@ export const Bookings = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+          <button onClick={() => { setView('list'); navigate('/bookings', { replace: true }); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
             <ArrowLeft size={24} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>

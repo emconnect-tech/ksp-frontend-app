@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
@@ -22,6 +23,7 @@ export const StockIn = () => {
 
   const { token } = useAuth();
   const { canDelete, canEdit } = usePermissions();
+  const navigate = useNavigate();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export const StockIn = () => {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       setEntries(prev => prev.filter(e => e.id !== id));
-      if (selectedEntry?.id === id) setView('list');
+      if (selectedEntry?.id === id) { setView('list'); navigate('/stock-in', { replace: true }); }
     } catch (e) {
       console.error(e);
       alert('Failed to delete entry');
@@ -70,10 +72,19 @@ export const StockIn = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (!id || view === 'details') return;
+    const entry = entries.find(e => String(e.id) === id);
+    if (entry) { setSelectedEntry(entry); setIsEditing(false); setView('details'); }
+  }, [entries]);
+
   const handleViewDetails = (entry: any) => {
     setSelectedEntry(entry);
     setIsEditing(false);
     setView('details');
+    navigate(`/stock-in?id=${entry.id}`, { replace: true });
   };
 
   const handleStartEdit = () => {
@@ -361,7 +372,7 @@ export const StockIn = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <button onClick={() => { setView('list'); setIsEditing(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+            <button onClick={() => { setView('list'); setIsEditing(false); navigate('/stock-in', { replace: true }); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
               <ArrowLeft size={24} />
             </button>
             <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Stock Entry Details</h2>
@@ -478,7 +489,7 @@ export const StockIn = () => {
           )}
         </Card>
         {!isEditing && (
-          <Button variant="outline" style={{ width: '100%' }} onClick={() => setView('list')}>
+          <Button variant="outline" style={{ width: '100%' }} onClick={() => { setView('list'); navigate('/stock-in', { replace: true }); }}>
             Back to History
           </Button>
         )}
