@@ -46,6 +46,7 @@ export const RawMaterials = () => {
   });
 
   // --- Shared ---
+  const [gsmList, setGsmList] = useState<any[]>([]);
   const [rawMaterialTypes, setRawMaterialTypes] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]); // available stock for OUT (IN - OUT, by weight)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -105,6 +106,8 @@ export const RawMaterials = () => {
     fetchEntries();
     fetch(`${API_BASE_URL}/api/v1/raw-material-types`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : []).then(setRawMaterialTypes).catch(() => {});
+    fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : []).then(setGsmList).catch(() => {});
   }, []);
 
   const findRmVariant = (variantId: string) => {
@@ -251,6 +254,17 @@ export const RawMaterials = () => {
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
               <Input type="date" value={inFormData.entryDate} onChange={e => setInFormData(p => ({ ...p, entryDate: e.target.value }))} required />
             </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
+              {inFormData.gsm && findRmVariant(inFormData.rawMaterialTypeVariantId)?.variant.gsm ? (
+                <Input type="text" value={`${inFormData.gsm} GSM`} readOnly style={{ background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }} />
+              ) : (
+                <select className="input-field" value={inFormData.gsm} onChange={e => setInFormData(p => ({ ...p, gsm: e.target.value }))} required>
+                  <option value="">Select GSM...</option>
+                  {gsmList.map((g: any) => <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>)}
+                </select>
+              )}
+            </div>
             <div className="grid-layout">
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
@@ -307,10 +321,21 @@ export const RawMaterials = () => {
         <Card style={{ padding: 'var(--space-6)' }}>
           {isEditing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {variantDropdown(editData.rawMaterialTypeVariantId, v => { const found = v ? findRmVariant(v) : null; setEditData((p: any) => ({ ...p, rawMaterialTypeVariantId: v, gsm: found?.variant.gsm ? String(found.variant.gsm) : p.gsm })); })}
+              {variantDropdown(editData.rawMaterialTypeVariantId, v => { const found = v ? findRmVariant(v) : null; setEditData((p: any) => ({ ...p, rawMaterialTypeVariantId: v, gsm: found?.variant.gsm ? String(found.variant.gsm) : '' })); })}
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
                 <Input type="date" value={editData.entryDate} onChange={e => setEditData((p: any) => ({ ...p, entryDate: e.target.value }))} required />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
+                {editData.gsm && findRmVariant(editData.rawMaterialTypeVariantId)?.variant.gsm ? (
+                  <Input type="text" value={`${editData.gsm} GSM`} readOnly style={{ background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }} />
+                ) : (
+                  <select className="input-field" value={editData.gsm} onChange={e => setEditData((p: any) => ({ ...p, gsm: e.target.value }))} required>
+                    <option value="">Select GSM...</option>
+                    {gsmList.map((g: any) => <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>)}
+                  </select>
+                )}
               </div>
               <div className="grid-layout">
                 <div>
