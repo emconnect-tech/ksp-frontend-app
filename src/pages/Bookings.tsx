@@ -404,6 +404,66 @@ export const Bookings = () => {
               itemsList: backorderItems.map(i => ({ variantId: i.variantId, name: i.variantId, qty: i.qty, weights: Array(i.qty).fill(''), price: i.price }))
             };
             setOrders(prev => [newOrder, ...prev]);
+
+            // Remove untagged bundles from the current order:
+            // — items fully untagged → delete from current order
+            // — items partially untagged → reduce noOfBundles to assigned count only
+            const itemsToDelete = weightsFormData.filter((item, idx) => untaggedCounts[idx] > 0 && (item.qty - untaggedCounts[idx]) <= 0);
+            const itemsToUpdate = weightsFormData.filter((item, idx) => untaggedCounts[idx] > 0 && (item.qty - untaggedCounts[idx]) > 0);
+
+            for (const item of itemsToDelete) {
+              if (item.id) {
+                await fetch(`${API_BASE_URL}/api/v1/orders/${activeOrderId}/items/${item.id}`, {
+                  method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+                });
+              }
+            }
+
+            if (itemsToUpdate.length > 0 || itemsToDelete.length > 0) {
+              // Rebuild the remaining items with reduced bundle counts and only assigned weights
+              const remainingItems = weightsFormData
+                .filter((item, idx) => (item.qty - untaggedCounts[idx]) > 0)
+                .map((item, idx) => {
+                  const assignedWeights = item.weights.filter((w: any) => parseFloat(w) > 0);
+                  return {
+                    productVariantId: item.variantId,
+                    noOfBundles: item.qty - untaggedCounts[weightsFormData.indexOf(item)],
+                    weightKg: assignedWeights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0),
+                    bundleWeights: assignedWeights.join(','),
+                    unitRate: item.price || 0,
+                  };
+                });
+
+              if (remainingItems.length > 0) {
+                await updateOrderWeightsAPI(String(activeOrderId), {
+                  customerId: orderToUpdate.customerId,
+                  items: remainingItems,
+                });
+              }
+
+              // Refresh the current order in state
+              const refreshed = await fetch(`${API_BASE_URL}/api/v1/orders/${activeOrderId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              if (refreshed.ok) {
+                const full = await refreshed.json();
+                const newItems = (full.items || []).map((i: any) => ({
+                  id: i.id, variantId: i.productVariantId, name: String(i.productVariantId),
+                  qty: i.noOfBundles || 1,
+                  weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [],
+                  price: i.unitRate || 0,
+                }));
+                const patch = {
+                  ...orderToUpdate,
+                  items: newItems.length,
+                  itemsList: newItems,
+                  totalWeight: full.totalWeightKg ? `${full.totalWeightKg} kg` : 'Pending',
+                  amount: `${(full.totalAmount || 0).toLocaleString()}`,
+                };
+                setSelectedOrder(patch);
+                setOrders(prev => prev.map(o => o.id === activeOrderId ? patch : o));
+              }
+            }
           }
         });
       }
