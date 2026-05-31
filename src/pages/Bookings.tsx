@@ -200,8 +200,7 @@ export const Bookings = () => {
     if (!orderId) return;
     const order = orders.find(o => String(o.id) === orderId);
     if (order && view !== 'details') {
-      setSelectedOrder(order);
-      setView('details');
+      handleViewDetails(order); // fetches full order incl. attachments, transport, notif status
     }
   }, [orders]);
 
