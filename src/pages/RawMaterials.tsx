@@ -18,14 +18,13 @@ export const RawMaterials = () => {
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
-  const [editRollWeights, setEditRollWeights] = useState<Record<number, string>>({});
   const [entries, setEntries] = useState<any[]>([]);
-  const [rollWeights, setRollWeights] = useState<Record<number, string>>({});
   const [inFormData, setInFormData] = useState({
     rawMaterialTypeVariantId: '',
     entryDate: new Date().toISOString().split('T')[0],
     gsm: '',
     rolls: '',
+    weightKg: '',
     notes: ''
   });
 
@@ -35,12 +34,13 @@ export const RawMaterials = () => {
   const [outIsEditing, setOutIsEditing] = useState(false);
   const [outEditData, setOutEditData] = useState<any>({});
   const [outEntries, setOutEntries] = useState<any[]>([]);
+  const [outRollWeights, setOutRollWeights] = useState<Record<number, string>>({});
+  const [outEditRollWeights, setOutEditRollWeights] = useState<Record<number, string>>({});
   const [outFormData, setOutFormData] = useState({
     rawMaterialTypeVariantId: '',
     entryDate: new Date().toISOString().split('T')[0],
     gsm: '',
     rolls: '',
-    weightKg: '',
     notes: ''
   });
 
@@ -110,11 +110,11 @@ export const RawMaterials = () => {
   const sumRollWeights = (weights: Record<number, string>) =>
     Object.values(weights).reduce((s, v) => s + (parseFloat(v) || 0), 0);
 
-  const renderRollWeightInputs = (count: number, weights: Record<number, string>, onChange: (n: number, v: string) => void) => {
+  const renderRollWeightInputs = (count: number, weights: Record<number, string>, onChange: (n: number, v: string) => void, label = 'Roll Weights (KG)') => {
     if (count < 1) return null;
     return (
       <div>
-        <label style={{ display: 'block', marginBottom: 'var(--space-3)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Roll Weights (KG)</label>
+        <label style={{ display: 'block', marginBottom: 'var(--space-3)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>{label}</label>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 'var(--space-3)' }}>
           {Array.from({ length: count }, (_, i) => i + 1).map(n => (
             <div key={n} style={{ position: 'relative' }}>
@@ -162,23 +162,15 @@ export const RawMaterials = () => {
     setInFormData(prev => ({ ...prev, rawMaterialTypeVariantId: variantId, gsm: found?.variant.gsm ? String(found.variant.gsm) : prev.gsm }));
   };
 
-  const handleInRollCountChange = (value: string) => {
-    setInFormData(prev => ({ ...prev, rolls: value }));
-    const count = parseInt(value) || 0;
-    setRollWeights(prev => { const next: Record<number, string> = {}; for (let i = 1; i <= count; i++) next[i] = prev[i] ?? ''; return next; });
-  };
-
   const handleInSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (config.USE_MOCK_API) { setTab('history'); return; }
-    const rollWeightsPayload = toRollWeightsPayload(rollWeights);
     const payload = {
       rawMaterialTypeVariantId: inFormData.rawMaterialTypeVariantId || null,
       entryDate: inFormData.entryDate,
       gsm: parseInt(inFormData.gsm),
       noOfRolls: parseInt(inFormData.rolls),
-      weightKg: sumRollWeights(rollWeights) || 0,
-      rollWeights: rollWeightsPayload,
+      weightKg: inFormData.weightKg ? parseFloat(inFormData.weightKg) : 0,
       notes: inFormData.notes,
     };
     try {
@@ -186,8 +178,7 @@ export const RawMaterials = () => {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setInFormData({ rawMaterialTypeVariantId: '', entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', notes: '' });
-        setRollWeights({});
+        setInFormData({ rawMaterialTypeVariantId: '', entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', weightKg: '', notes: '' });
         fetchEntries();
         setTab('history');
       } else { alert('Failed to save entry'); }
@@ -195,23 +186,12 @@ export const RawMaterials = () => {
   };
 
   const handleInStartEdit = () => {
-    const rolls = selectedEntry.noOfRolls || 0;
-    const existing: Record<number, string> = {};
-    for (let i = 1; i <= rolls; i++) existing[i] = String(selectedEntry.rollWeights?.[i] ?? '');
-    setEditRollWeights(existing);
-    setEditData({ rawMaterialTypeVariantId: selectedEntry.rawMaterialTypeVariantId || '', entryDate: selectedEntry.entryDate || '', gsm: String(selectedEntry.gsm || ''), rolls: String(rolls), notes: selectedEntry.notes || '' });
+    setEditData({ rawMaterialTypeVariantId: selectedEntry.rawMaterialTypeVariantId || '', entryDate: selectedEntry.entryDate || '', gsm: String(selectedEntry.gsm || ''), rolls: String(selectedEntry.noOfRolls || ''), weightKg: String(selectedEntry.weightKg || ''), notes: selectedEntry.notes || '' });
     setIsEditing(true);
   };
 
-  const handleInEditRollCountChange = (newCount: string) => {
-    const count = parseInt(newCount) || 0;
-    setEditData((prev: any) => ({ ...prev, rolls: newCount }));
-    setEditRollWeights(prev => { const next: Record<number, string> = {}; for (let i = 1; i <= count; i++) next[i] = prev[i] ?? ''; return next; });
-  };
-
   const handleInSaveEdit = async () => {
-    const rollWeightsPayload = toRollWeightsPayload(editRollWeights);
-    const payload = { rawMaterialTypeVariantId: editData.rawMaterialTypeVariantId || null, entryDate: editData.entryDate, gsm: parseInt(editData.gsm), noOfRolls: parseInt(editData.rolls), weightKg: sumRollWeights(editRollWeights) || 0, rollWeights: rollWeightsPayload, notes: editData.notes };
+    const payload = { rawMaterialTypeVariantId: editData.rawMaterialTypeVariantId || null, entryDate: editData.entryDate, gsm: parseInt(editData.gsm), noOfRolls: parseInt(editData.rolls), weightKg: editData.weightKg ? parseFloat(editData.weightKg) : 0, notes: editData.notes };
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/raw-materials/${selectedEntry.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
       if (res.ok) { setSelectedEntry(await res.json()); setIsEditing(false); fetchEntries(); }
@@ -230,7 +210,6 @@ export const RawMaterials = () => {
   };
 
   const renderInAdd = () => {
-    const rollCount = parseInt(inFormData.rolls) || 0;
     return (
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
@@ -245,11 +224,16 @@ export const RawMaterials = () => {
               <Input type="date" value={inFormData.entryDate} onChange={e => setInFormData(p => ({ ...p, entryDate: e.target.value }))} required />
             </div>
             {gsmField(inFormData.rawMaterialTypeVariantId, inFormData.gsm, v => setInFormData(p => ({ ...p, gsm: v })))}
-            <div>
-              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
-              <Input type="number" placeholder="Count" min="1" value={inFormData.rolls} onChange={e => handleInRollCountChange(e.target.value)} required />
+            <div className="grid-layout">
+              <div>
+                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
+                <Input type="number" placeholder="Count" min="1" value={inFormData.rolls} onChange={e => setInFormData(p => ({ ...p, rolls: e.target.value }))} required />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Total Weight (KG)</label>
+                <Input type="number" step="0.01" min="0" placeholder="Total KG" value={inFormData.weightKg} onChange={e => setInFormData(p => ({ ...p, weightKg: e.target.value }))} required />
+              </div>
             </div>
-            {rollCount > 0 && renderRollWeightInputs(rollCount, rollWeights, (n, v) => setRollWeights(prev => ({ ...prev, [n]: v })))}
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notes (Optional)</label>
               <textarea className="input-field" rows={3} style={{ resize: 'vertical' }} value={inFormData.notes} onChange={e => setInFormData(p => ({ ...p, notes: e.target.value }))} />
@@ -279,7 +263,6 @@ export const RawMaterials = () => {
   const renderInDetails = () => {
     if (!selectedEntry) return null;
     const rollCount = selectedEntry.noOfRolls || 0;
-    const existingRollWeights: Record<number, number> = selectedEntry.rollWeights || {};
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -303,11 +286,16 @@ export const RawMaterials = () => {
                 <Input type="date" value={editData.entryDate} onChange={e => setEditData((p: any) => ({ ...p, entryDate: e.target.value }))} required />
               </div>
               {gsmField(editData.rawMaterialTypeVariantId, editData.gsm, v => setEditData((p: any) => ({ ...p, gsm: v })))}
-              <div>
-                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
-                <Input type="number" min="1" value={editData.rolls} onChange={e => handleInEditRollCountChange(e.target.value)} required />
+              <div className="grid-layout">
+                <div>
+                  <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
+                  <Input type="number" min="1" value={editData.rolls} onChange={e => setEditData((p: any) => ({ ...p, rolls: e.target.value }))} required />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Total Weight (KG)</label>
+                  <Input type="number" step="0.01" min="0" value={editData.weightKg} onChange={e => setEditData((p: any) => ({ ...p, weightKg: e.target.value }))} required />
+                </div>
               </div>
-              {parseInt(editData.rolls) > 0 && renderRollWeightInputs(parseInt(editData.rolls), editRollWeights, (n, v) => setEditRollWeights(prev => ({ ...prev, [n]: v })))}
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notes</label>
                 <textarea className="input-field" rows={3} style={{ resize: 'vertical' }} value={editData.notes} onChange={e => setEditData((p: any) => ({ ...p, notes: e.target.value }))} />
@@ -328,21 +316,6 @@ export const RawMaterials = () => {
                 <div><label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Rolls</label><div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{rollCount}</div></div>
                 <div><label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Total Weight</label><div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedEntry.weightKg} kg</div></div>
               </div>
-              {Object.keys(existingRollWeights).length > 0 && (
-                <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-3)' }}>Roll Weights</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 'var(--space-3)' }}>
-                    {Array.from({ length: rollCount }, (_, i) => i + 1).map(n => (
-                      <div key={n} style={{ position: 'relative' }}>
-                        <span style={{ position: 'absolute', top: '-8px', left: '6px', fontSize: '10px', background: 'white', padding: '0 4px', color: 'var(--color-primary)', fontWeight: 600, zIndex: 1 }}>#{n}</span>
-                        <div style={{ height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontWeight: 600, fontSize: '0.9rem' }}>
-                          {existingRollWeights[n] != null ? existingRollWeights[n] : '—'}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
               <div><label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Notes</label><div style={{ fontSize: '0.9rem', marginTop: 'var(--space-1)', lineHeight: 1.5 }}>{selectedEntry.notes || '—'}</div></div>
             </div>
           )}
@@ -359,6 +332,12 @@ export const RawMaterials = () => {
     setOutFormData(prev => ({ ...prev, rawMaterialTypeVariantId: variantId, gsm: found?.variant.gsm ? String(found.variant.gsm) : prev.gsm }));
   };
 
+  const handleOutRollCountChange = (value: string) => {
+    setOutFormData(prev => ({ ...prev, rolls: value }));
+    const count = parseInt(value) || 0;
+    setOutRollWeights(prev => { const next: Record<number, string> = {}; for (let i = 1; i <= count; i++) next[i] = prev[i] ?? ''; return next; });
+  };
+
   const handleOutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (config.USE_MOCK_API) { setTab('history'); return; }
@@ -367,7 +346,8 @@ export const RawMaterials = () => {
       entryDate: outFormData.entryDate,
       gsm: outFormData.gsm ? parseInt(outFormData.gsm) : null,
       noOfRolls: parseInt(outFormData.rolls),
-      weightKg: outFormData.weightKg ? parseFloat(outFormData.weightKg) : null,
+      weightKg: sumRollWeights(outRollWeights) || 0,
+      rollWeights: toRollWeightsPayload(outRollWeights),
       notes: outFormData.notes,
     };
     try {
@@ -375,7 +355,8 @@ export const RawMaterials = () => {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setOutFormData({ rawMaterialTypeVariantId: '', entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', weightKg: '', notes: '' });
+        setOutFormData({ rawMaterialTypeVariantId: '', entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', notes: '' });
+        setOutRollWeights({});
         fetchEntries();
         setTab('history');
       } else { alert('Failed to save entry'); }
@@ -383,12 +364,22 @@ export const RawMaterials = () => {
   };
 
   const handleOutStartEdit = () => {
-    setOutEditData({ rawMaterialTypeVariantId: selectedOutEntry.rawMaterialTypeVariantId || '', entryDate: selectedOutEntry.entryDate || '', gsm: String(selectedOutEntry.gsm || ''), rolls: String(selectedOutEntry.noOfRolls || ''), weightKg: String(selectedOutEntry.weightKg || ''), notes: selectedOutEntry.notes || '' });
+    const boxes = selectedOutEntry.noOfRolls || 0;
+    const existing: Record<number, string> = {};
+    for (let i = 1; i <= boxes; i++) existing[i] = String(selectedOutEntry.rollWeights?.[i] ?? '');
+    setOutEditRollWeights(existing);
+    setOutEditData({ rawMaterialTypeVariantId: selectedOutEntry.rawMaterialTypeVariantId || '', entryDate: selectedOutEntry.entryDate || '', gsm: String(selectedOutEntry.gsm || ''), rolls: String(boxes), notes: selectedOutEntry.notes || '' });
     setOutIsEditing(true);
   };
 
+  const handleOutEditRollCountChange = (newCount: string) => {
+    const count = parseInt(newCount) || 0;
+    setOutEditData((prev: any) => ({ ...prev, rolls: newCount }));
+    setOutEditRollWeights(prev => { const next: Record<number, string> = {}; for (let i = 1; i <= count; i++) next[i] = prev[i] ?? ''; return next; });
+  };
+
   const handleOutSaveEdit = async () => {
-    const payload = { rawMaterialTypeVariantId: outEditData.rawMaterialTypeVariantId || null, entryDate: outEditData.entryDate, gsm: outEditData.gsm ? parseInt(outEditData.gsm) : null, noOfRolls: parseInt(outEditData.rolls), weightKg: outEditData.weightKg ? parseFloat(outEditData.weightKg) : null, notes: outEditData.notes };
+    const payload = { rawMaterialTypeVariantId: outEditData.rawMaterialTypeVariantId || null, entryDate: outEditData.entryDate, gsm: outEditData.gsm ? parseInt(outEditData.gsm) : null, noOfRolls: parseInt(outEditData.rolls), weightKg: sumRollWeights(outEditRollWeights) || 0, rollWeights: toRollWeightsPayload(outEditRollWeights), notes: outEditData.notes };
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/raw-material-out/${selectedOutEntry.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
       if (res.ok) { setSelectedOutEntry(await res.json()); setOutIsEditing(false); fetchEntries(); }
@@ -406,7 +397,9 @@ export const RawMaterials = () => {
     } catch (e) { alert('Failed to delete entry'); }
   };
 
-  const renderOutAdd = () => (
+  const renderOutAdd = () => {
+    const boxCount = parseInt(outFormData.rolls) || 0;
+    return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
         <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Raw Material — Out (Consumed)</h2>
@@ -420,16 +413,11 @@ export const RawMaterials = () => {
             <Input type="date" value={outFormData.entryDate} onChange={e => setOutFormData(p => ({ ...p, entryDate: e.target.value }))} required />
           </div>
           {gsmField(outFormData.rawMaterialTypeVariantId, outFormData.gsm, v => setOutFormData(p => ({ ...p, gsm: v })))}
-          <div className="grid-layout">
-            <div>
-              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Rolls Consumed</label>
-              <Input type="number" placeholder="Count" min="1" value={outFormData.rolls} onChange={e => setOutFormData(p => ({ ...p, rolls: e.target.value }))} required />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Weight (KG, Optional)</label>
-              <Input type="number" step="0.01" min="0" placeholder="Total KG" value={outFormData.weightKg} onChange={e => setOutFormData(p => ({ ...p, weightKg: e.target.value }))} />
-            </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Rolls Consumed</label>
+            <Input type="number" placeholder="Count" min="1" value={outFormData.rolls} onChange={e => handleOutRollCountChange(e.target.value)} required />
           </div>
+          {boxCount > 0 && renderRollWeightInputs(boxCount, outRollWeights, (n, v) => setOutRollWeights(prev => ({ ...prev, [n]: v })))}
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notes (Optional)</label>
             <textarea className="input-field" rows={3} style={{ resize: 'vertical' }} value={outFormData.notes} onChange={e => setOutFormData(p => ({ ...p, notes: e.target.value }))} />
@@ -438,7 +426,8 @@ export const RawMaterials = () => {
         <Button type="submit" variant="primary" style={{ width: '100%', marginTop: 'var(--space-6)' }}>Save Entry</Button>
       </form>
     </Card>
-  );
+    );
+  };
 
   const renderOutHistory = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -480,16 +469,11 @@ export const RawMaterials = () => {
                 <Input type="date" value={outEditData.entryDate} onChange={e => setOutEditData((p: any) => ({ ...p, entryDate: e.target.value }))} required />
               </div>
               {gsmField(outEditData.rawMaterialTypeVariantId, outEditData.gsm, v => setOutEditData((p: any) => ({ ...p, gsm: v })))}
-              <div className="grid-layout">
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Rolls Consumed</label>
-                  <Input type="number" min="1" value={outEditData.rolls} onChange={e => setOutEditData((p: any) => ({ ...p, rolls: e.target.value }))} required />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Weight (KG)</label>
-                  <Input type="number" step="0.01" min="0" value={outEditData.weightKg} onChange={e => setOutEditData((p: any) => ({ ...p, weightKg: e.target.value }))} />
-                </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Rolls Consumed</label>
+                <Input type="number" min="1" value={outEditData.rolls} onChange={e => handleOutEditRollCountChange(e.target.value)} required />
               </div>
+              {parseInt(outEditData.rolls) > 0 && renderRollWeightInputs(parseInt(outEditData.rolls), outEditRollWeights, (n, v) => setOutEditRollWeights(prev => ({ ...prev, [n]: v })))}
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notes</label>
                 <textarea className="input-field" rows={3} style={{ resize: 'vertical' }} value={outEditData.notes} onChange={e => setOutEditData((p: any) => ({ ...p, notes: e.target.value }))} />
@@ -508,8 +492,28 @@ export const RawMaterials = () => {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
                 <div><label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Rolls Consumed</label><div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedOutEntry.noOfRolls}</div></div>
-                <div><label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Weight</label><div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedOutEntry.weightKg ? `${selectedOutEntry.weightKg} kg` : '—'}</div></div>
+                <div><label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Total Weight</label><div style={{ fontWeight: 600, fontSize: '1.25rem' }}>{selectedOutEntry.weightKg ? `${selectedOutEntry.weightKg} kg` : '—'}</div></div>
               </div>
+              {(() => {
+                const boxWeights: Record<number, number> = selectedOutEntry.rollWeights || {};
+                const boxCount = selectedOutEntry.noOfRolls || 0;
+                if (Object.keys(boxWeights).length === 0) return null;
+                return (
+                  <div>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-3)' }}>Roll Weights</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 'var(--space-3)' }}>
+                      {Array.from({ length: boxCount }, (_, i) => i + 1).map(n => (
+                        <div key={n} style={{ position: 'relative' }}>
+                          <span style={{ position: 'absolute', top: '-8px', left: '6px', fontSize: '10px', background: 'white', padding: '0 4px', color: 'var(--color-primary)', fontWeight: 600, zIndex: 1 }}>#{n}</span>
+                          <div style={{ height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontWeight: 600, fontSize: '0.9rem' }}>
+                            {boxWeights[n] != null ? boxWeights[n] : '—'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
               <div><label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Notes</label><div style={{ fontSize: '0.9rem', marginTop: 'var(--space-1)', lineHeight: 1.5 }}>{selectedOutEntry.notes || '—'}</div></div>
             </div>
           )}
