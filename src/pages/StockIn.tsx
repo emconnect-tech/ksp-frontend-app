@@ -339,9 +339,11 @@ export const StockIn = () => {
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}
         >
           <div>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: '1.1rem' }}>{entry.type || getVariantLabel(entry.productVariantId)}</p>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-              {entry.noOfBundles} Bundles ({entry.weightKg}kg)
+            <p style={{ margin: 0, fontWeight: 700, fontSize: '1.1rem' }}>{entry.type || getVariantLabel(entry.productVariantId)}</p>
+            <p style={{ margin: '4px 0 0', fontSize: '0.9rem' }}>
+              <strong>{entry.noOfBundles}</strong> <span style={{ color: 'var(--color-text-muted)' }}>Bundles</span>
+              {' · '}
+              <strong>{entry.weightKg} kg</strong>
             </p>
             <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
               {new Date(entry.entryDate).toLocaleDateString()}{entry.gsm ? ` • ${entry.gsm} GSM` : ''}{entry.size ? ` • ${entry.size}` : ''}
