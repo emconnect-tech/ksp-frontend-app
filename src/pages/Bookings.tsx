@@ -1424,7 +1424,15 @@ export const Bookings = () => {
         {wizardStep === 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             {orderItems.map((item) => (
-              <div key={item.id} style={{ padding: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'white' }}>
+              <div key={item.id} style={{ padding: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'white', position: 'relative' }}>
+                {orderItems.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setOrderItems(prev => prev.filter(i => i.id !== item.id))}
+                    style={{ position: 'absolute', top: '8px', right: '8px', background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '1.1rem', lineHeight: 1, padding: '2px 6px' }}
+                    title="Remove product"
+                  >×</button>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px' }}>Product</label>
@@ -1437,9 +1445,9 @@ export const Bookings = () => {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px' }}>Quantity</label>
-                    <Input 
-                      type="number" 
-                      value={item.qty} 
+                    <Input
+                      type="number"
+                      value={item.qty}
                       onChange={(e) => updateItem(item.id, 'qty', e.target.value)}
                     />
                   </div>
