@@ -146,37 +146,84 @@ export const Reports = () => {
 
             {pendingTiles.length > 0 && (
               <section style={{ marginBottom: 'var(--space-5)' }}>
-                <p style={{ margin: '0 0 var(--space-3)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pending Deliveries</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-2)' }}>
-                  {pendingTiles.map((s, i) => (
-                    <Card key={i} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', border: 'none' }}>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.3, marginBottom: '4px' }}>{s.label}</p>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-primary)' }}>
-                        {s.totalBundles} <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--color-text-muted)' }}>bundles</span>
-                      </p>
-                      {s.orderCount > 1 && <p style={{ margin: '2px 0 0', fontSize: '0.68rem', color: 'var(--color-text-muted)' }}>{s.orderCount} orders</p>}
-                    </Card>
-                  ))}
+                <p style={{ margin: '0 0 var(--space-2)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Pending Deliveries
+                  <span style={{ marginLeft: '8px', fontWeight: 400, color: 'var(--color-primary)' }}>
+                    {pendingTiles.reduce((s, t) => s + t.totalBundles, 0)} bun · {pendingTiles.length} items
+                  </span>
+                </p>
+                <div style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)' }}>
+                        <th style={thStyle}>Product · Size</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Bun</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Orders</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingTiles.sort((a, b) => b.totalBundles - a.totalBundles).map((s, i) => (
+                        <tr key={i} style={{ borderBottom: i < pendingTiles.length - 1 ? '1px solid var(--color-border)' : 'none', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
+                          <td style={tdStyle}><strong>{s.label}</strong></td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)' }}>{s.totalBundles}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{s.orderCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: '2px solid var(--color-border)', background: 'var(--color-surface-muted)', fontWeight: 700 }}>
+                        <td style={tdStyle}>Total</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-primary)' }}>{pendingTiles.reduce((s, t) => s + t.totalBundles, 0)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               </section>
             )}
 
-            <section>
-              <p style={{ margin: '0 0 var(--space-3)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Raw Material Summary</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-2)' }}>
-                {Object.entries(rmInventory).slice(0, 6).map(([name, v], i) => (
-                  <Card key={i} style={{ padding: 'var(--space-3)', border: 'none', background: 'var(--color-surface-muted)' }}>
-                    <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)', lineHeight: 1.3, marginBottom: '4px' }}>{name}</p>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: 'var(--color-primary)' }}>{v.availableKg} <span style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--color-text-muted)' }}>kg</span></p>
-                  </Card>
-                ))}
-              </div>
-              {Object.keys(rmInventory).length > 6 && (
-                <p style={{ margin: 'var(--space-2) 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => setTab('rm')}>
-                  + {Object.keys(rmInventory).length - 6} more — view Raw Materials tab →
+            {Object.keys(rmInventory).length > 0 && (
+              <section>
+                <p style={{ margin: '0 0 var(--space-2)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Raw Material Stock
+                  <span style={{ marginLeft: '8px', fontWeight: 400, color: 'var(--color-primary)' }}>
+                    {fmt(Object.values(rmInventory).reduce((s, v) => s + v.availableKg, 0))} kg
+                  </span>
                 </p>
-              )}
-            </section>
+                <div style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)' }}>
+                        <th style={thStyle}>Material</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Available (kg)</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Rolls</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(rmInventory).sort(([, a], [, b]) => b.availableKg - a.availableKg).map(([name, v], i, arr) => (
+                        <tr key={name} style={{ borderBottom: i < arr.length - 1 ? '1px solid var(--color-border)' : 'none', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
+                          <td style={tdStyle}><strong>{name}</strong></td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)' }}>{v.availableKg}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-text-muted)' }}>{v.rolls}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: '2px solid var(--color-border)', background: 'var(--color-surface-muted)', fontWeight: 700 }}>
+                        <td style={tdStyle}>Total ({Object.keys(rmInventory).length} types)</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-primary)' }}>{fmt(Object.values(rmInventory).reduce((s, v) => s + v.availableKg, 0))}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{Object.values(rmInventory).reduce((s, v) => s + v.rolls, 0)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                {Object.keys(rmInventory).length > 6 && (
+                  <p style={{ margin: 'var(--space-2) 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => setTab('rm')}>
+                    View drill-down by size → Raw Materials tab
+                  </p>
+                )}
+              </section>
+            )}
           </>
         )}
 
