@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import {
   Users,
   Package,
-  ArrowUpRight
+  ArrowUpRight,
+  ArrowDownLeft,
+  Layers
 } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Badge } from '../design-system/components/ui/Badge';
@@ -16,6 +18,8 @@ export const Reports = () => {
   const [stats, setStats] = useState<{ totalCustomers: number; todayOrdersCount: number } | null>(null);
   const [stockRows, setStockRows] = useState<any[]>([]);
   const [pendingTiles, setPendingTiles] = useState<Array<{ label: string; totalBundles: number; orderCount: number }>>([]);
+  const [rmInOut, setRmInOut] = useState<Array<{ name: string; inKg: number; outKg: number; netKg: number }>>([]);
+  const [rmInventory, setRmInventory] = useState<Array<{ name: string; availableKg: number; rolls: number }>>([]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/v1/dashboard/stats`, {
@@ -87,6 +91,45 @@ export const Reports = () => {
           });
         });
       setPendingTiles(Object.values(statsMap).filter(s => s.totalBundles > 0));
+    }).catch(() => {});
+
+    // Raw material IN vs OUT
+    Promise.all([
+      fetch(`${API_BASE_URL}/api/v1/raw-materials`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/raw-material-out`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/raw-materials/inventory`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+    ]).then(([inEntries, outEntries, inventory]) => {
+      // IN vs OUT grouped by material type name
+      const byType: Record<string, { inKg: number; outKg: number }> = {};
+      inEntries.forEach((e: any) => {
+        const name = e.materialTypeName || 'Unknown';
+        if (!byType[name]) byType[name] = { inKg: 0, outKg: 0 };
+        byType[name].inKg += e.weightKg || 0;
+      });
+      outEntries.forEach((e: any) => {
+        const name = e.materialTypeName || 'Unknown';
+        if (!byType[name]) byType[name] = { inKg: 0, outKg: 0 };
+        byType[name].outKg += e.weightKg || 0;
+      });
+      setRmInOut(
+        Object.entries(byType)
+          .map(([name, v]) => ({ name, inKg: Math.round(v.inKg * 100) / 100, outKg: Math.round(v.outKg * 100) / 100, netKg: Math.round((v.inKg - v.outKg) * 100) / 100 }))
+          .sort((a, b) => b.inKg - a.inKg)
+      );
+
+      // Current inventory holdings grouped by material type name
+      const invByType: Record<string, { availableKg: number; rolls: number }> = {};
+      inventory.forEach((i: any) => {
+        const name = i.materialTypeName || 'Unknown';
+        if (!invByType[name]) invByType[name] = { availableKg: 0, rolls: 0 };
+        invByType[name].availableKg += i.availableWeightKg || 0;
+        invByType[name].rolls += i.availableRolls || 0;
+      });
+      setRmInventory(
+        Object.entries(invByType)
+          .map(([name, v]) => ({ name, availableKg: Math.round(v.availableKg * 100) / 100, rolls: v.rolls }))
+          .sort((a, b) => b.availableKg - a.availableKg)
+      );
     }).catch(() => {});
   }, [token]);
 
@@ -202,6 +245,76 @@ export const Reports = () => {
             );
           })}
         </div>
+      </section>
+
+      {/* Raw Material IN vs OUT */}
+      <section style={{ marginBottom: 'var(--space-8)' }}>
+        <h3 style={{ fontSize: '1rem', marginBottom: 'var(--space-4)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <ArrowUpRight size={20} color="var(--color-primary)" />
+          Raw Material — In vs Out
+        </h3>
+        {rmInOut.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>No raw material entries yet.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            {rmInOut.map((row, i) => (
+              <Card key={i} style={{ padding: 'var(--space-4)' }}>
+                <div style={{ fontWeight: 600, marginBottom: 'var(--space-3)' }}>{row.name}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <ArrowDownLeft size={12} /> Received
+                    </p>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: '#2f9e44' }}>{row.inKg} kg</p>
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <ArrowUpRight size={12} /> Consumed
+                    </p>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: '#fa5252' }}>{row.outKg} kg</p>
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Net Available</p>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: row.netKg > 0 ? 'var(--color-primary)' : '#fa5252' }}>{row.netKg} kg</p>
+                  </div>
+                </div>
+                {row.inKg > 0 && (
+                  <div style={{ width: '100%', height: '6px', background: 'var(--color-surface-muted)', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.min((row.outKg / row.inKg) * 100, 100)}%`, height: '100%', background: row.outKg > row.inKg ? '#fa5252' : '#2f9e44', borderRadius: '4px' }} />
+                  </div>
+                )}
+                <p style={{ margin: '6px 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                  {row.inKg > 0 ? `${((row.outKg / row.inKg) * 100).toFixed(1)}% consumed` : ''}
+                </p>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Raw Material Inventory Holdings */}
+      <section style={{ marginBottom: 'var(--space-8)' }}>
+        <h3 style={{ fontSize: '1rem', marginBottom: 'var(--space-4)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Layers size={20} color="var(--color-primary)" />
+          Current Inventory Holdings
+        </h3>
+        {rmInventory.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>All stock fully consumed or no entries yet.</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-3)' }}>
+            {rmInventory.map((row, i) => (
+              <Card key={i} style={{ padding: 'var(--space-4)' }}>
+                <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--color-text-muted)', lineHeight: 1.3 }}>{row.name}</p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-primary)' }}>
+                  {row.availableKg} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--color-text-muted)' }}>kg</span>
+                </p>
+                {row.rolls > 0 && (
+                  <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{row.rolls} rolls</p>
+                )}
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
