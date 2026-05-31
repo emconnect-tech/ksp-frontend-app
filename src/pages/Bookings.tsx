@@ -60,11 +60,15 @@ export const Bookings = () => {
   const [notifStatus, setNotifStatus] = useState<Record<string, 'sent' | 'failed'>>({});
 
   useEffect(() => {
-    loadOrders();
-    loadMasterData();
+    loadAll();
     loadStatuses();
     checkWaStatus();
   }, []);
+
+  const loadAll = async () => {
+    const custs = await loadMasterData();
+    await loadOrders(custs);
+  };
 
   const checkWaStatus = async () => {
     if (config.WHATSAPP_TYPE === 'none') { setWaConnected(false); return; }
@@ -79,15 +83,16 @@ export const Bookings = () => {
     }
   };
 
-  // Re-resolve customer name/phone once customersList is populated
+  // Re-resolve customer name/phone as a safety net if orders load before customers
   useEffect(() => {
-    if (customersList.length === 0) return;
+    if (customersList.length === 0 || orders.length === 0) return;
     setOrders(prev => prev.map(o => {
-      const cust = customersList.find((c: any) => c.id === o.customerId);
+      if (o.customer && !o.customer.includes('-')) return o; // already resolved (not a UUID)
+      const cust = customersList.find((c: any) => String(c.id) === String(o.customerId));
       if (!cust) return o;
       return { ...o, customer: cust.name, customerPhone: cust.phoneNumber || null, customerPlace: cust.place || null };
     }));
-  }, [customersList]);
+  }, [customersList, orders.length]);
 
   const loadStatuses = async () => {
     if (config.USE_MOCK_API) return;
@@ -106,20 +111,25 @@ export const Bookings = () => {
     }
   };
 
-  const loadMasterData = async () => {
+  const loadMasterData = async (): Promise<any[]> => {
     if (config.USE_MOCK_API) {
-      setCustomersList([{ id: '11111111-1111-1111-1111-111111111111', name: 'Planet Agro (Mock)' }]);
+      const custs = [{ id: '11111111-1111-1111-1111-111111111111', name: 'Planet Agro (Mock)' }];
+      setCustomersList(custs);
       setProductsList([{ id: 'mock-prod-1', name: 'Green Net', variants: [{ id: '22222222-2222-2222-2222-222222222222', size: '110GSM', rateOverride: 210 }] }]);
-      return;
+      return custs;
     }
     try {
-      const custRes = await fetch(`${API_BASE_URL}/api/v1/customers`, { headers: { 'Authorization': `Bearer ${token}` } });
-      if (custRes.ok) setCustomersList(await custRes.json());
-
-      const prodRes = await fetch(`${API_BASE_URL}/api/v1/products?includeInactive=true`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const [custRes, prodRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/v1/customers`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/products?includeInactive=true`, { headers: { 'Authorization': `Bearer ${token}` } }),
+      ]);
+      const custs = custRes.ok ? await custRes.json() : [];
+      if (custRes.ok) setCustomersList(custs);
       if (prodRes.ok) setProductsList(await prodRes.json());
+      return custs;
     } catch (e) {
       console.error('Failed to load master data', e);
+      return [];
     }
   };
 
@@ -146,18 +156,20 @@ export const Bookings = () => {
     }
   };
 
-  const loadOrders = async () => {
+  const loadOrders = async (custs?: any[]) => {
     try {
       const data = await fetchOrders();
+      const resolvedCustomers = custs ?? customersList;
       const formatted = data.map((o: any) => {
         const { phase, action } = mapPhase(o.statusName, o.totalWeightKg);
+        const cust = resolvedCustomers.find((c: any) => String(c.id) === String(o.customerId));
         return {
           id: o.id || o.orderNumber,
           orderNumber: o.orderNumber,
           customerId: o.customerId,
-          customer: customersList.find((c: any) => c.id === o.customerId)?.name || o.customerId || 'Unknown',
-          customerPhone: customersList.find((c: any) => c.id === o.customerId)?.phoneNumber || null,
-          customerPlace: customersList.find((c: any) => c.id === o.customerId)?.place || null,
+          customer: cust?.name || o.customerId || 'Unknown',
+          customerPhone: cust?.phoneNumber || null,
+          customerPlace: cust?.place || null,
           items: o.items?.length || 0,
           totalWeight: o.totalWeightKg ? `${o.totalWeightKg} kg` : 'Pending',
           amount: `${(o.totalAmount || 0).toLocaleString()}`,
