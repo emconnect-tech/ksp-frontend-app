@@ -5,6 +5,7 @@ import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
+import { ProductVariantPicker } from '../components/ProductVariantPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
@@ -47,6 +48,7 @@ export const RawMaterials = () => {
   // --- Shared ---
   const [gsmList, setGsmList] = useState<any[]>([]);
   const [rawMaterialTypes, setRawMaterialTypes] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]); // available stock for OUT (IN - OUT, by weight)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteOutId, setConfirmDeleteOutId] = useState<string | null>(null);
 
@@ -66,15 +68,38 @@ export const RawMaterials = () => {
       return;
     }
     try {
-      const [inRes, outRes] = await Promise.all([
+      const [inRes, outRes, invRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/v1/raw-materials`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/v1/raw-material-out`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/raw-materials/inventory`, { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
       if (inRes.ok) setEntries(await inRes.json());
       if (outRes.ok) setOutEntries(await outRes.json());
+      if (invRes.ok) setInventory(await invRes.json());
     } catch (e) {
       console.error('Failed to fetch raw materials', e);
     }
+  };
+
+  // Build the searchable type → size picker source from available inventory.
+  // optionalExtra injects a variant that may be fully consumed (used when editing an existing OUT entry).
+  const buildInventoryPicker = (extra?: { id: string; name: string; size: string; gsm: number }) => {
+    const byType: Record<string, any> = {};
+    for (const inv of inventory) {
+      const name = inv.materialTypeName || 'Raw Material';
+      if (!byType[name]) byType[name] = { id: name, name, variants: [] };
+      byType[name].variants.push({ id: inv.rawMaterialTypeVariantId, size: inv.size, gsm: inv.gsm });
+    }
+    if (extra && !inventory.some(i => i.rawMaterialTypeVariantId === extra.id)) {
+      if (!byType[extra.name]) byType[extra.name] = { id: extra.name, name: extra.name, variants: [] };
+      byType[extra.name].variants.push({ id: extra.id, size: extra.size, gsm: extra.gsm });
+    }
+    return Object.values(byType);
+  };
+
+  const availableForVariant = (variantId: string): number | null => {
+    const line = inventory.find(i => i.rawMaterialTypeVariantId === variantId);
+    return line ? line.availableWeightKg : null;
   };
 
   useEffect(() => {
@@ -379,6 +404,17 @@ export const RawMaterials = () => {
   };
 
   const handleOutSaveEdit = async () => {
+    const totalOut = sumRollWeights(outEditRollWeights);
+    const invAvail = availableForVariant(outEditData.rawMaterialTypeVariantId);
+    if (invAvail != null) {
+      // inventory already deducted this entry's current weight — add it back to get the true allowance
+      const sameVariant = outEditData.rawMaterialTypeVariantId === selectedOutEntry.rawMaterialTypeVariantId;
+      const allowance = invAvail + (sameVariant ? (selectedOutEntry.weightKg || 0) : 0);
+      if (totalOut > allowance + 0.0001) {
+        alert(`Only ${Math.round(allowance * 100) / 100} kg available in stock for this material. You entered ${totalOut} kg.`);
+        return;
+      }
+    }
     const payload = { rawMaterialTypeVariantId: outEditData.rawMaterialTypeVariantId || null, entryDate: outEditData.entryDate, gsm: outEditData.gsm ? parseInt(outEditData.gsm) : null, noOfRolls: parseInt(outEditData.rolls), weightKg: sumRollWeights(outEditRollWeights) || 0, rollWeights: toRollWeightsPayload(outEditRollWeights), notes: outEditData.notes };
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/raw-material-out/${selectedOutEntry.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
@@ -398,7 +434,10 @@ export const RawMaterials = () => {
   };
 
   const renderOutAdd = () => {
-    const boxCount = parseInt(outFormData.rolls) || 0;
+    const rollCount = parseInt(outFormData.rolls) || 0;
+    const available = availableForVariant(outFormData.rawMaterialTypeVariantId);
+    const totalOut = sumRollWeights(outRollWeights);
+    const overdrawn = available != null && totalOut > available + 0.0001;
     return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
@@ -407,23 +446,48 @@ export const RawMaterials = () => {
       </div>
       <form onSubmit={handleOutSubmit}>
         <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-          {variantDropdown(outFormData.rawMaterialTypeVariantId, handleOutVariantChange)}
+          <div>
+            <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Material Type</label>
+            {inventory.length === 0 ? (
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>No raw material in stock. Add a Raw Material — In entry first.</p>
+            ) : (
+              <ProductVariantPicker
+                productsList={buildInventoryPicker() as any}
+                value={outFormData.rawMaterialTypeVariantId}
+                onChange={(id) => handleOutVariantChange(String(id))}
+                placeholder="Search material type / size..."
+              />
+            )}
+            {available != null && (
+              <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                Available in stock: <strong style={{ color: 'var(--color-primary)' }}>{available} kg</strong>
+              </p>
+            )}
+          </div>
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
             <Input type="date" value={outFormData.entryDate} onChange={e => setOutFormData(p => ({ ...p, entryDate: e.target.value }))} required />
           </div>
-          {gsmField(outFormData.rawMaterialTypeVariantId, outFormData.gsm, v => setOutFormData(p => ({ ...p, gsm: v })))}
+          <div>
+            <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
+            <Input type="text" value={outFormData.gsm ? `${outFormData.gsm} GSM` : ''} readOnly placeholder="Auto from material" style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }} />
+          </div>
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Rolls Consumed</label>
             <Input type="number" placeholder="Count" min="1" value={outFormData.rolls} onChange={e => handleOutRollCountChange(e.target.value)} required />
           </div>
-          {boxCount > 0 && renderRollWeightInputs(boxCount, outRollWeights, (n, v) => setOutRollWeights(prev => ({ ...prev, [n]: v })))}
+          {rollCount > 0 && renderRollWeightInputs(rollCount, outRollWeights, (n, v) => setOutRollWeights(prev => ({ ...prev, [n]: v })))}
+          {overdrawn && (
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#fa5252', fontWeight: 600 }}>
+              Total {totalOut} kg exceeds available {available} kg.
+            </p>
+          )}
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Notes (Optional)</label>
             <textarea className="input-field" rows={3} style={{ resize: 'vertical' }} value={outFormData.notes} onChange={e => setOutFormData(p => ({ ...p, notes: e.target.value }))} />
           </div>
         </div>
-        <Button type="submit" variant="primary" style={{ width: '100%', marginTop: 'var(--space-6)' }}>Save Entry</Button>
+        <Button type="submit" variant="primary" disabled={overdrawn} style={{ width: '100%', marginTop: 'var(--space-6)' }}>Save Entry</Button>
       </form>
     </Card>
     );
@@ -463,12 +527,47 @@ export const RawMaterials = () => {
         <Card style={{ padding: 'var(--space-6)' }}>
           {outIsEditing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {variantDropdown(outEditData.rawMaterialTypeVariantId, v => { const found = v ? findRmVariant(v) : null; setOutEditData((p: any) => ({ ...p, rawMaterialTypeVariantId: v, gsm: found?.variant.gsm ? String(found.variant.gsm) : p.gsm })); })}
+              {(() => {
+                const info = findRmVariant(outEditData.rawMaterialTypeVariantId);
+                const extra = outEditData.rawMaterialTypeVariantId ? {
+                  id: outEditData.rawMaterialTypeVariantId,
+                  name: info?.type?.name || selectedOutEntry.materialTypeName || 'Raw Material',
+                  size: info?.variant?.spec || '',
+                  gsm: info?.variant?.gsm || parseInt(outEditData.gsm) || 0,
+                } : undefined;
+                const inv = availableForVariant(outEditData.rawMaterialTypeVariantId);
+                const sameVariant = outEditData.rawMaterialTypeVariantId === selectedOutEntry.rawMaterialTypeVariantId;
+                const allowance = (inv ?? 0) + (sameVariant ? (selectedOutEntry.weightKg || 0) : 0);
+                return (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Material Type</label>
+                    <ProductVariantPicker
+                      productsList={buildInventoryPicker(extra) as any}
+                      value={outEditData.rawMaterialTypeVariantId}
+                      onChange={(id) => {
+                        const line = inventory.find(i => i.rawMaterialTypeVariantId === String(id));
+                        const f = !line ? findRmVariant(String(id)) : null;
+                        const g = line?.gsm ?? f?.variant.gsm;
+                        setOutEditData((p: any) => ({ ...p, rawMaterialTypeVariantId: String(id), gsm: g ? String(g) : '' }));
+                      }}
+                      placeholder="Search material type / size..."
+                    />
+                    {(inv != null || sameVariant) && (
+                      <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                        Available in stock: <strong style={{ color: 'var(--color-primary)' }}>{Math.round(allowance * 100) / 100} kg</strong>
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
                 <Input type="date" value={outEditData.entryDate} onChange={e => setOutEditData((p: any) => ({ ...p, entryDate: e.target.value }))} required />
               </div>
-              {gsmField(outEditData.rawMaterialTypeVariantId, outEditData.gsm, v => setOutEditData((p: any) => ({ ...p, gsm: v })))}
+              <div>
+                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
+                <Input type="text" value={outEditData.gsm ? `${outEditData.gsm} GSM` : ''} readOnly placeholder="Auto from material" style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }} />
+              </div>
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Rolls Consumed</label>
                 <Input type="number" min="1" value={outEditData.rolls} onChange={e => handleOutEditRollCountChange(e.target.value)} required />
