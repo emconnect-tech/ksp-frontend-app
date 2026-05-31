@@ -222,6 +222,17 @@ export const Bookings = () => {
       if (full) {
         setSelectedOrder((prev: any) => ({ ...prev, attachments: full.attachments || [] }));
         seedNotifStatusFromOrder(String(order.id), full.waNotificationStatus || {});
+        // Seed transport from saved backend values
+        if (full.transportBundles || full.transportRate) {
+          setTransportData(prev => ({
+            ...prev,
+            [order.id]: {
+              bundles: full.transportBundles || 0,
+              rate: full.transportRate || 0,
+              enabled: (full.transportBundles || 0) > 0 || (full.transportRate || 0) > 0,
+            }
+          }));
+        }
       }
     } catch (e) {
       console.error('Failed to fetch order details', e);
@@ -425,8 +436,12 @@ export const Bookings = () => {
     }
     setSavingPrices(true);
     try {
+      const transport = transportData[selectedOrder.id] ?? { bundles: 0, rate: 0, enabled: false };
+      const transportTotal = transport.enabled ? (transport.bundles || 0) * (transport.rate || 0) : 0;
       const payload = {
         customerId: selectedOrder.customerId,
+        transportBundles: transport.enabled ? (transport.bundles || 0) : 0,
+        transportRate: transport.enabled ? (transport.rate || 0) : 0,
         items: selectedOrder.itemsList.map((item: any, idx: number) => {
           const w = Array.isArray(item.weights)
             ? item.weights.reduce((s: number, v: any) => s + (parseFloat(v) || 0), 0)
@@ -445,7 +460,7 @@ export const Bookings = () => {
           ? item.weights.reduce((s: number, v: any) => s + (parseFloat(v) || 0), 0)
           : (item.weightKg || 0);
         return sum + w * (itemPrices[idx] || 0);
-      }, 0);
+      }, 0) + transportTotal;
       const updated = {
         ...selectedOrder,
         amount: `₹${newTotal.toLocaleString()}`,
