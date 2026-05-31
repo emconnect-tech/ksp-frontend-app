@@ -800,21 +800,47 @@ export const Bookings = () => {
           statsMap[key].orderCount += 1;
         }
       }
-      const entries = Object.values(statsMap).filter(s => s.totalBundles > 0);
+      const entries = Object.values(statsMap).filter(s => s.totalBundles > 0).sort((a, b) => b.totalBundles - a.totalBundles);
       if (entries.length === 0) return null;
+      const totalBun = entries.reduce((s, e) => s + e.totalBundles, 0);
       return (
-        <div>
-          <p style={{ margin: '0 0 var(--space-2) 0', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Outstanding to Deliver</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-2)' }}>
-            {entries.map((s, i) => (
-              <Card key={i} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', border: 'none' }}>
-                <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-text-muted)', lineHeight: 1.3, marginBottom: '4px' }}>{s.label}</p>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-primary)' }}>{s.totalBundles} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--color-text-muted)' }}>bun</span></p>
-                {s.orderCount > 1 && <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>across {s.orderCount} orders</p>}
-              </Card>
-            ))}
+        <details style={{ marginBottom: 'var(--space-1)' }} open={entries.length <= 5}>
+          <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', userSelect: 'none' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Outstanding to Deliver
+            </span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+              {totalBun} bun · {entries.length} items ▾
+            </span>
+          </summary>
+          <div style={{ borderRadius: '0 0 var(--radius-sm) var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--color-border)', borderTop: 'none' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)' }}>
+                  <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--color-text-muted)', fontSize: '0.72rem' }}>Product · Size</th>
+                  <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--color-text-muted)', fontSize: '0.72rem' }}>Bun</th>
+                  <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--color-text-muted)', fontSize: '0.72rem' }}>Orders</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((s, i) => (
+                  <tr key={i} style={{ borderBottom: i < entries.length - 1 ? '1px solid var(--color-border)' : 'none', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
+                    <td style={{ padding: '7px 10px', fontWeight: 500 }}>{s.label}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)' }}>{s.totalBundles}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{s.orderCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--color-border)', background: 'var(--color-surface-muted)' }}>
+                  <td style={{ padding: '6px 10px', fontWeight: 700, fontSize: '0.78rem' }}>Total</td>
+                  <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)' }}>{totalBun}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
           </div>
-        </div>
+        </details>
       );
     };
 
