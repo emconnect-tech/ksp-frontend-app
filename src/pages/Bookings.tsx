@@ -924,7 +924,36 @@ export const Bookings = () => {
                 <div key={idx} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
                   {(() => { const info = getVariantInfo(item.variantId); return (
                     <>
-                      <div style={{ fontWeight: 600, marginBottom: '4px' }}>{info.label}</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                        <div style={{ fontWeight: 600 }}>{info.label}</div>
+                        {isEditable && item.id && (
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm(`Remove ${info.label} from this order?`)) return;
+                              try {
+                                const res = await fetch(`${API_BASE_URL}/api/v1/orders/${selectedOrder.id}/items/${item.id}`, {
+                                  method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                if (res.ok) {
+                                  const updated = await res.json();
+                                  const newItems = (updated.items || []).map((i: any) => ({
+                                    id: i.id, variantId: i.productVariantId, name: String(i.productVariantId),
+                                    qty: i.noOfBundles || 1, weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [], price: i.unitRate || 0
+                                  }));
+                                  const newTotal = `${(updated.totalAmount || 0).toLocaleString()}`;
+                                  const patch = { ...selectedOrder, itemsList: newItems, items: newItems.length, amount: newTotal };
+                                  setSelectedOrder(patch);
+                                  setOrders(prev => prev.map(o => o.id === selectedOrder.id ? patch : o));
+                                  setItemPrices(newItems.map((i: any) => i.price || 0));
+                                  setItemQtys(newItems.map((i: any) => i.qty || 1));
+                                }
+                              } catch (e) { console.error('Failed to remove item', e); }
+                            }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '1rem', padding: '0 2px', lineHeight: 1 }}
+                            title="Remove product"
+                          >×</button>
+                        )}
+                      </div>
                       <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
                         {info.gsm && <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>{info.gsm} GSM</span>}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -934,7 +963,7 @@ export const Bookings = () => {
                             onChange={(e) => setItemQtys(prev => { const n = [...prev]; n[idx] = e.target.value === '' ? '' : parseInt(e.target.value); return n; })}
                             style={{ width: '52px', height: '26px', padding: '1px 6px', fontSize: '0.8rem', display: 'inline-block' }}
                           />
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>bundles</span>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>bun</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
                           <Input
