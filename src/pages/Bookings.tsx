@@ -160,7 +160,7 @@ export const Bookings = () => {
           customerPlace: customersList.find((c: any) => c.id === o.customerId)?.place || null,
           items: o.items?.length || 0,
           totalWeight: o.totalWeightKg ? `${o.totalWeightKg} kg` : 'Pending',
-          amount: `₹${(o.totalAmount || 0).toLocaleString()}`,
+          amount: `${(o.totalAmount || 0).toLocaleString()}`,
           phase,
           action,
           date: new Date(o.createdAt || Date.now()).toISOString().split('T')[0],
@@ -463,7 +463,7 @@ export const Bookings = () => {
       }, 0) + transportTotal;
       const updated = {
         ...selectedOrder,
-        amount: `₹${newTotal.toLocaleString()}`,
+        amount: `${newTotal.toLocaleString()}`,
         itemsList: selectedOrder.itemsList.map((item: any, idx: number) => ({ ...item, price: itemPrices[idx], qty: itemQtys[idx] ?? item.qty }))
       };
       setSelectedOrder(updated);
@@ -741,7 +741,7 @@ export const Bookings = () => {
         customer: customerName,
         items: totalQty,
         totalWeight: `Pending`,
-        amount: `₹${(response.totalAmount || orderTotal).toLocaleString()}`,
+        amount: `${(response.totalAmount || orderTotal).toLocaleString()}`,
         phase: 'Order Created',
         action: 'Add Weights',
         date: new Date().toISOString().split('T')[0],
@@ -809,7 +809,7 @@ export const Bookings = () => {
             {entries.map((s, i) => (
               <Card key={i} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', border: 'none' }}>
                 <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-text-muted)', lineHeight: 1.3, marginBottom: '4px' }}>{s.label}</p>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-primary)' }}>{s.totalBundles} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--color-text-muted)' }}>bundles</span></p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-primary)' }}>{s.totalBundles} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--color-text-muted)' }}>bun</span></p>
                 {s.orderCount > 1 && <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>across {s.orderCount} orders</p>}
               </Card>
             ))}
@@ -831,7 +831,7 @@ export const Bookings = () => {
               <div>
                 <p style={{ margin: 0, fontWeight: 600 }}>Order #{order.id}</p>
                 <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                  {order.customer}{order.customerPhone ? ` • ${order.customerPhone}` : ''} • {order.items} Bundles
+                  {order.customer}{order.customerPhone ? ` • ${order.customerPhone}` : ''} • {order.items} Bun
                 </p>
                 <p style={{ margin: '2px 0 0', fontSize: '0.85rem', fontWeight: 600 }}>
                   {order.amount}
@@ -937,7 +937,6 @@ export const Bookings = () => {
                           <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>bundles</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>₹</span>
                           <Input
                             type="number"
                             value={itemPrices[idx] ?? item.price ?? 0}
@@ -968,7 +967,6 @@ export const Bookings = () => {
                       onChange={(e) => setNewItemQty(parseInt(e.target.value) || 1)}
                       style={{ flex: 1, height: '32px', fontSize: '0.85rem' }}
                     />
-                    <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>₹</label>
                     <Input
                       type="number"
                       value={newItemPrice}
@@ -1195,7 +1193,7 @@ export const Bookings = () => {
               <span onClick={() => setShowCustomerModal(true)} style={{ cursor: 'pointer', color: 'var(--color-primary)', borderBottom: '1px dashed var(--color-primary)' }}>
                 {selectedOrder.customer}
               </span>
-              {' · '}{selectedOrder.items} Bundles · {selectedOrder.date}
+              {' · '}{selectedOrder.items} Bun · {selectedOrder.date}
             </p>
           </div>
         </div>
@@ -1304,7 +1302,7 @@ export const Bookings = () => {
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-6)', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Create Order</h2>
-          <Badge status="upcoming">Step {wizardStep} of 3</Badge>
+          <Badge status="upcoming">Step {wizardStep} of 2</Badge>
         </div>
 
         {wizardStep === 1 && (
@@ -1388,52 +1386,11 @@ export const Bookings = () => {
 
             <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
               <Button variant="outline" onClick={() => setWizardStep(1)} style={{ flex: 1 }}>Back</Button>
-              <Button variant="primary" onClick={() => setWizardStep(3)} style={{ flex: 2 }} disabled={orderItems.some(i => !i.product)}>Next: Review Quote</Button>
+              <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }} disabled={orderItems.some(i => !i.product)}>Confirm & Create Order</Button>
             </div>
           </div>
         )}
 
-        {wizardStep === 3 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              <Button
-                variant="outline"
-                onClick={handleShareEnquiry}
-                style={{ width: '100%', borderColor: 'var(--color-primary)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-              >
-                <Share2 size={18} /> Share as Enquiry (Template)
-              </Button>
-              <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-                <Button variant="outline" onClick={() => setWizardStep(2)} style={{ flex: 1 }}>Back</Button>
-                <Button variant="primary" onClick={handleConfirmBooking} style={{ flex: 2 }}>Confirm & Create Order</Button>
-              </div>
-            </div>
-
-            <div style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ margin: '0 0 var(--space-4) 0', fontSize: '0.95rem' }}>Order Summary</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                {orderItems.map((item, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                    <span>
-                      <strong>{getVariantInfo(item.product).label}</strong>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        {item.qty} Bundles × ₹{item.rate.toLocaleString()}
-                      </div>
-                    </span>
-                    <span style={{ fontWeight: 600 }}>₹{(item.qty * item.rate).toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-              <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 'var(--space-4) 0' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                <span>Estimated Total</span>
-                <span style={{ color: 'var(--color-primary)' }}>
-                  ₹{orderItems.reduce((sum, item) => sum + (item.qty * item.rate), 0).toLocaleString()}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
       </Card>
     );
   };
@@ -1576,7 +1533,7 @@ export const Bookings = () => {
                 );
                 return weightsFormData.map((item, itemIdx) => (
                 <div key={itemIdx}>
-                  <h4 style={{ margin: '0 0 var(--space-3) 0', fontSize: '0.9rem' }}>{getVariantInfo(item.variantId).label} ({item.qty} Bundles)</h4>
+                  <h4 style={{ margin: '0 0 var(--space-3) 0', fontSize: '0.9rem' }}>{getVariantInfo(item.variantId).label} · {item.qty} Bun</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                     {item.weights.map((w: any, wIdx: number) => {
                       const key = `${itemIdx}-${wIdx}`;

@@ -66,6 +66,7 @@
 body {
   margin: 0;
   font-family: var(--font-body);
+  font-size: 16px;
   background-color: var(--color-background);
   color: var(--color-text-main);
   line-height: 1.5;
@@ -92,7 +93,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: var(--space-3) var(--space-6);
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 1rem;
   border-radius: var(--radius-pill);
   border: none;
   cursor: pointer;
@@ -213,7 +214,7 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid var(--color-border);
   background-color: var(--color-surface-muted);
   font-family: var(--font-body);
-  font-size: 1rem;
+  font-size: 1.05rem;
   transition: all var(--transition-fast);
   outline: none;
 }
