@@ -116,7 +116,7 @@ export const Bookings = () => {
       const custRes = await fetch(`${API_BASE_URL}/api/v1/customers`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (custRes.ok) setCustomersList(await custRes.json());
 
-      const prodRes = await fetch(`${API_BASE_URL}/api/v1/products`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const prodRes = await fetch(`${API_BASE_URL}/api/v1/products?includeInactive=true`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (prodRes.ok) setProductsList(await prodRes.json());
     } catch (e) {
       console.error('Failed to load master data', e);
@@ -1394,7 +1394,7 @@ export const Bookings = () => {
                 {orderItems.map((item, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
                     <span>
-                      <strong>{item.product}</strong>
+                      <strong>{getVariantInfo(item.product).label}</strong>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                         {item.qty} Bundles × ₹{item.rate.toLocaleString()}
                       </div>
