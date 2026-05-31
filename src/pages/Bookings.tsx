@@ -175,6 +175,7 @@ export const Bookings = () => {
           amount: `${(o.totalAmount || 0).toLocaleString()}`,
           phase,
           action,
+          notes: o.notes || '',
           date: new Date(o.createdAt || Date.now()).toISOString().split('T')[0],
           itemsList: o.items?.map((i: any) => ({
             id: i.id,
@@ -376,8 +377,10 @@ export const Bookings = () => {
       setOrders(prev => prev.map(o => o.id !== activeOrderId ? o : { ...o, ...updatedOrder }));
       if (selectedOrder?.id === activeOrderId) setSelectedOrder((prev: any) => ({ ...prev, ...updatedOrder }));
 
-      // Backorder for untagged bundles
-      if (hasUntagged) {
+      // Backorder for untagged bundles — only if one doesn't already exist for this order
+      const backorderTag = `Backorder from #${orderToUpdate.orderNumber || activeOrderId}`;
+      const backorderAlreadyExists = orders.some(o => o.id !== activeOrderId && o.notes?.includes(backorderTag));
+      if (hasUntagged && !backorderAlreadyExists) {
         const total = untaggedCounts.reduce((s, c) => s + c, 0);
         const backorderItems = weightsFormData
           .map((item, idx) => ({ variantId: item.variantId, qty: untaggedCounts[idx], price: item.price || 0 }))
@@ -395,7 +398,8 @@ export const Bookings = () => {
             const newOrder = {
               id: resp.id, orderNumber: resp.orderNumber, customerId: orderToUpdate.customerId,
               customer: orderToUpdate.customer, items: backorderItems.reduce((s, i) => s + i.qty, 0),
-              totalWeight: 'Pending', amount: '₹0', phase: 'Order Created', action: 'Add Weights',
+              totalWeight: 'Pending', amount: '0', phase: 'Order Created', action: 'Add Weights',
+              notes: backorderTag,
               date: new Date().toISOString().split('T')[0],
               itemsList: backorderItems.map(i => ({ variantId: i.variantId, name: i.variantId, qty: i.qty, weights: Array(i.qty).fill(''), price: i.price }))
             };
@@ -1284,11 +1288,7 @@ export const Bookings = () => {
                   <div
                     onClick={() => {
                       if (!isNavigable) return;
-                      if (p.phase === 'Weights Added' || p.phase === 'Quotation Generated') {
-                        openWeightsModal(selectedOrder);
-                      } else {
-                        setSelectedPhaseIdx(i);
-                      }
+                      setSelectedPhaseIdx(i);
                     }}
                     style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', paddingBottom: 'var(--space-6)', cursor: isNavigable ? 'pointer' : 'default', position: 'relative' }}
                   >
