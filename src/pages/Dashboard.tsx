@@ -87,7 +87,7 @@ export const Dashboard = () => {
               <ShoppingBag size={14} opacity={0.9} />
               <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, opacity: 0.9 }}>Today's Orders</p>
             </div>
-            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>{stats.todayOrdersCount} Orders</h2>
+            <h2 style={{ margin: 0, fontSize: '1.7rem', fontWeight: 700 }}>{stats.todayOrdersCount} Orders</h2>
           </Card>
 
           {/* Sales Card 2 */}
@@ -95,13 +95,13 @@ export const Dashboard = () => {
             <p style={{ margin: '0 0 8px 0', fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Sales Status</p>
             <div style={{ display: 'flex', gap: '12px' }}>
               <div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-primary)' }}>{stats.quotesCount}</div>
-                <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)' }}>Quotes</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--color-primary)' }}>{stats.quotesCount}</div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Quotes</div>
               </div>
               <div style={{ width: '1px', background: 'var(--color-border)' }}></div>
               <div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-secondary)' }}>{stats.billsCount}</div>
-                <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)' }}>Bills</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--color-secondary)' }}>{stats.billsCount}</div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Bills</div>
               </div>
             </div>
           </Card>
@@ -112,7 +112,7 @@ export const Dashboard = () => {
               <Factory size={14} opacity={0.9} />
               <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, opacity: 0.9 }}>Weight In / Out</p>
             </div>
-            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>
+            <h2 style={{ margin: 0, fontSize: '1.7rem', fontWeight: 700 }}>
               {(stats.weightInKgToday / 1000).toFixed(1)}t / {(stats.weightOutKgToday / 1000).toFixed(1)}t
             </h2>
           </Card>

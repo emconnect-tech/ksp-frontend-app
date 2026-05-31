@@ -306,12 +306,12 @@ export const AdminSettings = () => {
   const [newVariantGsm, setNewVariantGsm] = useState('');
   const [newVariantSize, setNewVariantSize] = useState('');
   const [newVariantRate, setNewVariantRate] = useState('');
-  const [newVariantWeight, setNewVariantWeight] = useState('');
+  const [newVariantPieces, setNewVariantPieces] = useState('');
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProductName, setEditProductName] = useState('');
   const [editProductDesc, setEditProductDesc] = useState('');
   const [editingVariant, setEditingVariant] = useState<{ productId: string; variantId: string } | null>(null);
-  const [editVariantData, setEditVariantData] = useState({ gsm: '', size: '', rate: '', weight: '' });
+  const [editVariantData, setEditVariantData] = useState({ gsm: '', size: '', rate: '', pieces: '' });
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'variant'; productId: string; variantId: string; label: string } | null>(null);
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<{ id: string; name: string } | null>(null);
 
@@ -360,39 +360,57 @@ export const AdminSettings = () => {
   const handleSaveVariant = async () => {
     if (!editingVariant) return;
     const { productId, variantId } = editingVariant;
+    const payload: Record<string, any> = {
+      rateOverride: editVariantData.rate ? parseFloat(editVariantData.rate) : null,
+    };
+    if (editVariantData.gsm) payload.gsm = parseInt(editVariantData.gsm);
+    if (editVariantData.size) payload.size = editVariantData.size;
+    if (editVariantData.pieces) payload.noOfPieces = parseInt(editVariantData.pieces);
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/products/${productId}/variants/${variantId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          gsm: editVariantData.gsm ? parseInt(editVariantData.gsm) : null,
-          size: editVariantData.size || null,
-          rateOverride: editVariantData.rate ? parseFloat(editVariantData.rate) : null,
-          weightPerBundleKg: editVariantData.weight ? parseFloat(editVariantData.weight) : null,
-        }),
+        body: JSON.stringify(payload),
       });
-      if (res.ok) { setEditingVariant(null); fetchProducts(); }
-      else alert('Failed to update variant');
-    } catch (e) { alert('Failed to update variant'); }
+      if (res.ok) {
+        setEditingVariant(null);
+        fetchProducts();
+      } else {
+        const errBody = await res.text();
+        console.error('Update variant failed', res.status, errBody);
+        alert(`Failed to update variant (${res.status}): ${errBody}`);
+      }
+    } catch (e) {
+      console.error('Update variant error', e);
+      alert('Failed to update variant: ' + e);
+    }
   };
 
   const handleAddVariant = async (productId: string) => {
-    if (!newVariantRate.trim()) return;
+    if (!newVariantRate.trim() || !newVariantSize.trim()) {
+      alert('Size and Rate are required.');
+      return;
+    }
+    const payload: Record<string, any> = {
+      size: newVariantSize,
+      rateOverride: parseFloat(newVariantRate),
+    };
+    if (newVariantGsm) payload.gsm = parseInt(newVariantGsm);
+    if (newVariantPieces) payload.noOfPieces = parseInt(newVariantPieces);
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/products/${productId}/variants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          gsm: newVariantGsm ? parseInt(newVariantGsm) : null,
-          size: newVariantSize || null,
-          rateOverride: parseFloat(newVariantRate),
-          weightPerBundleKg: newVariantWeight ? parseFloat(newVariantWeight) : null,
-        })
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         setAddingVariantForProductId(null);
-        setNewVariantGsm(''); setNewVariantSize(''); setNewVariantRate(''); setNewVariantWeight('');
+        setNewVariantGsm(''); setNewVariantSize(''); setNewVariantRate(''); setNewVariantPieces('');
         fetchProducts();
+      } else {
+        const errBody = await res.text();
+        console.error('Add variant failed', res.status, errBody);
+        alert(`Failed to add variant (${res.status}): ${errBody}`);
       }
     } catch (e) { console.error('Failed to add variant', e); }
   };
@@ -591,17 +609,29 @@ export const AdminSettings = () => {
               {editingVariant?.variantId === v.id ? (
                 <div style={{ padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                    <select className="input-field" value={editVariantData.gsm} onChange={e => setEditVariantData(d => ({ ...d, gsm: e.target.value }))} style={{ flex: 1, fontSize: '0.85rem' }} autoFocus>
-                      <option value="">GSM...</option>
-                      {gsmList.filter((g: any) => g.isActive).map((g: any) => (
-                        <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
-                      ))}
-                    </select>
-                    <Input placeholder="Size (e.g. 30x60)" value={editVariantData.size} onChange={e => setEditVariantData(d => ({ ...d, size: e.target.value }))} style={{ flex: 1 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>GSM</div>
+                      <select className="input-field" value={editVariantData.gsm} onChange={e => setEditVariantData(d => ({ ...d, gsm: e.target.value }))} style={{ width: '100%', fontSize: '0.85rem' }} autoFocus>
+                        <option value="">Select GSM</option>
+                        {gsmList.filter((g: any) => g.isActive).map((g: any) => (
+                          <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>Size</div>
+                      <Input placeholder="e.g. 30x60" value={editVariantData.size} onChange={e => setEditVariantData(d => ({ ...d, size: e.target.value }))} style={{ width: '100%' }} />
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                    <Input placeholder="Rate (₹)" type="number" value={editVariantData.rate} onChange={e => setEditVariantData(d => ({ ...d, rate: e.target.value }))} style={{ flex: 1 }} />
-                    <Input placeholder="Wt/bundle (kg)" type="number" value={editVariantData.weight} onChange={e => setEditVariantData(d => ({ ...d, weight: e.target.value }))} style={{ flex: 1 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>Rate (₹ per kg)</div>
+                      <Input placeholder="e.g. 210" type="number" value={editVariantData.rate} onChange={e => setEditVariantData(d => ({ ...d, rate: e.target.value }))} style={{ width: '100%' }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>Pieces / bundle</div>
+                      <Input placeholder="e.g. 50" type="number" value={editVariantData.pieces} onChange={e => setEditVariantData(d => ({ ...d, pieces: e.target.value }))} style={{ width: '100%' }} />
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                     <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => setEditingVariant(null)}>Cancel</Button>
@@ -610,11 +640,11 @@ export const AdminSettings = () => {
                 </div>
               ) : (
                 <div style={{ padding: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem' }}>{v.gsm ? `${v.gsm} GSM` : ''}{v.gsm && v.size ? ' • ' : ''}{v.size || ''}{v.weightPerBundleKg ? ` • ${v.weightPerBundleKg}kg/bundle` : ''}</span>
+                  <span style={{ fontSize: '0.85rem' }}>{v.gsm ? `${v.gsm} GSM` : ''}{v.gsm && v.size ? ' • ' : ''}{v.size || ''}{v.noOfPieces ? ` • ${v.noOfPieces} pcs/bundle` : ''}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                     <strong style={{ fontSize: '0.85rem' }}>₹{v.rateOverride}</strong>
                     {canManageCatalog && v.id && (
-                      <button onClick={() => { setEditingVariant({ productId: product.id, variantId: v.id }); setEditVariantData({ gsm: String(v.gsm || ''), size: v.size || '', rate: String(v.rateOverride || ''), weight: String(v.weightPerBundleKg || '') }); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', fontSize: '0.75rem', padding: '2px 4px' }} title="Edit variant">✎</button>
+                      <button onClick={() => { setEditingVariant({ productId: product.id, variantId: v.id }); setEditVariantData({ gsm: String(v.gsm || ''), size: v.size || '', rate: String(v.rateOverride || ''), pieces: String(v.noOfPieces || '') }); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', fontSize: '0.75rem', padding: '2px 4px' }} title="Edit variant">✎</button>
                     )}
                     {canDelete && v.id && (
                       <button onClick={() => setConfirmDelete({ type: 'variant', productId: product.id, variantId: v.id, label: v.size })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '0.75rem', padding: '2px 4px', lineHeight: 1 }} title="Remove">✕</button>
@@ -629,17 +659,29 @@ export const AdminSettings = () => {
             addingVariantForProductId === product.id ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)', padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)' }}>
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                  <select className="input-field" value={newVariantGsm} onChange={e => setNewVariantGsm(e.target.value)} style={{ flex: 1, fontSize: '0.85rem' }}>
-                    <option value="">GSM...</option>
-                    {gsmList.filter((g: any) => g.isActive).map((g: any) => (
-                      <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
-                    ))}
-                  </select>
-                  <Input placeholder="Size (e.g. 30x60)" value={newVariantSize} onChange={e => setNewVariantSize(e.target.value)} style={{ flex: 1 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>GSM</div>
+                    <select className="input-field" value={newVariantGsm} onChange={e => setNewVariantGsm(e.target.value)} style={{ width: '100%', fontSize: '0.85rem' }}>
+                      <option value="">Select GSM</option>
+                      {gsmList.filter((g: any) => g.isActive).map((g: any) => (
+                        <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>Size *</div>
+                    <Input placeholder="e.g. 30x60" value={newVariantSize} onChange={e => setNewVariantSize(e.target.value)} style={{ width: '100%' }} />
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                  <Input placeholder="Rate (₹)" type="number" value={newVariantRate} onChange={e => setNewVariantRate(e.target.value)} style={{ flex: 1 }} />
-                  <Input placeholder="Wt/bundle (kg)" type="number" value={newVariantWeight} onChange={e => setNewVariantWeight(e.target.value)} style={{ flex: 1 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>Rate (₹ per kg) *</div>
+                    <Input placeholder="e.g. 210" type="number" value={newVariantRate} onChange={e => setNewVariantRate(e.target.value)} style={{ width: '100%' }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>Pieces / bundle</div>
+                    <Input placeholder="e.g. 50" type="number" value={newVariantPieces} onChange={e => setNewVariantPieces(e.target.value)} style={{ width: '100%' }} />
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                   <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => setAddingVariantForProductId(null)}>Cancel</Button>
@@ -647,7 +689,7 @@ export const AdminSettings = () => {
                 </div>
               </div>
             ) : (
-              <Button variant="outline" style={{ width: '100%', borderStyle: 'dashed', fontSize: '0.8rem', padding: 'var(--space-1)' }} onClick={() => { setAddingVariantForProductId(product.id); setNewVariantGsm(''); setNewVariantSize(''); setNewVariantRate(''); setNewVariantWeight(''); }}>
+              <Button variant="outline" style={{ width: '100%', borderStyle: 'dashed', fontSize: '0.8rem', padding: 'var(--space-1)' }} onClick={() => { setAddingVariantForProductId(product.id); setNewVariantGsm(''); setNewVariantSize(''); setNewVariantRate(''); setNewVariantPieces(''); }}>
                 + Add Price Record
               </Button>
             )

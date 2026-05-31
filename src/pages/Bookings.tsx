@@ -181,7 +181,7 @@ export const Bookings = () => {
             id: i.id,
             variantId: i.productVariantId,
             name: String(i.productVariantId),
-            qty: i.noOfBundles || 1,
+            qty: i.noOfBundles ?? 1,
             weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [],
             price: i.unitRate || 0
           })) || []
@@ -304,8 +304,12 @@ export const Bookings = () => {
       allocByVariant.get(variantId)!.push({ stockKey, weight });
     }
 
-    setWeightsFormData(order.itemsList.map((item: any) => {
-      const qty = item.qty;
+    setWeightsFormData(order.itemsList.map((item: any, idx: number) => {
+      // Use the live UI qty (itemQtys) when this is the currently viewed order,
+      // so unsaved qty changes and post-save qty reductions are reflected in the modal.
+      const uiQty = selectedOrder?.id === order.id && itemQtys[idx] != null && itemQtys[idx] !== ''
+        ? Number(itemQtys[idx]) : undefined;
+      const qty = (uiQty && uiQty > 0) ? uiQty : (item.qty || 1);
       const preAllocs = allocByVariant.get(item.variantId) || [];
       const weights = Array(qty).fill('').map((_: any, i: number) =>
         preAllocs[i]?.weight || (Array.isArray(item.weights) && item.weights[i] ? String(item.weights[i]) : '')
@@ -320,7 +324,8 @@ export const Bookings = () => {
   const handleButtonClick = (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
     if (order?.phase === 'Order Created') {
-      openWeightsModal(order);
+      // Prefer selectedOrder so openWeightsModal can pick up current itemQtys from the UI
+      openWeightsModal(selectedOrder?.id === orderId ? selectedOrder : order);
       return;
     }
     if (order?.phase === 'Weights Added') {
@@ -448,7 +453,7 @@ export const Bookings = () => {
                 const full = await refreshed.json();
                 const newItems = (full.items || []).map((i: any) => ({
                   id: i.id, variantId: i.productVariantId, name: String(i.productVariantId),
-                  qty: i.noOfBundles || 1,
+                  qty: i.noOfBundles ?? 1,
                   weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [],
                   price: i.unitRate || 0,
                 }));
@@ -497,7 +502,7 @@ export const Bookings = () => {
   useEffect(() => {
     if (selectedOrder?.itemsList) {
       setItemPrices(selectedOrder.itemsList.map((i: any) => i.price || 0));
-      setItemQtys(selectedOrder.itemsList.map((i: any) => i.qty || 1));
+      setItemQtys(selectedOrder.itemsList.map((i: any) => i.qty ?? 1));
       setSelectedPhaseIdx(null);
     }
   }, [selectedOrder?.id]);
@@ -795,22 +800,25 @@ export const Bookings = () => {
     const customerName = cust ? cust.name : 'Unknown Client';
 
     const totalQty = orderItems.reduce((sum, item) => sum + item.qty, 0);
-    
+
+    // Rate is per-kg and the billable weight comes from actual stock/weighing entered later.
+    // At booking there is no weight yet, so weight and amount stay pending (0) until weights are added.
     const payload = {
       customerId: selectedCustomer,
       notes: "Order placed from UI",
       items: orderItems.map(item => ({
         productVariantId: item.product,
         noOfBundles: item.qty,
+        weightKg: 0,
         unitRate: item.rate,
-        lineTotal: item.qty * item.rate
+        lineTotal: 0
       }))
     };
 
     try {
       const response = await createOrderAPI(payload);
 
-      const orderTotal = orderItems.reduce((sum, item) => sum + item.qty * item.rate, 0);
+      const orderTotal = 0;
       const newOrder = {
         id: response.id,
         orderNumber: response.orderNumber,
@@ -889,12 +897,12 @@ export const Bookings = () => {
             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Outstanding to Deliver
             </span>
-            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-primary)' }}>
               {totalBun} bun · {entries.length} items ▾
             </span>
           </summary>
           <div style={{ borderRadius: '0 0 var(--radius-sm) var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--color-border)', borderTop: 'none' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
               <thead>
                 <tr style={{ background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)' }}>
                   <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--color-text-muted)', fontSize: '0.72rem' }}>Product · Size</th>
@@ -905,16 +913,16 @@ export const Bookings = () => {
               <tbody>
                 {entries.map((s, i) => (
                   <tr key={i} style={{ borderBottom: i < entries.length - 1 ? '1px solid var(--color-border)' : 'none', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
-                    <td style={{ padding: '7px 10px', fontWeight: 500 }}>{s.label}</td>
-                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)' }}>{s.totalBundles}</td>
-                    <td style={{ padding: '7px 10px', textAlign: 'right', color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{s.orderCount}</td>
+                    <td style={{ padding: '7px 10px', fontWeight: 600, fontSize: '0.88rem' }}>{s.label}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)', fontSize: '1rem' }}>{s.totalBundles}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', color: 'var(--color-text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>{s.orderCount}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: '2px solid var(--color-border)', background: 'var(--color-surface-muted)' }}>
-                  <td style={{ padding: '6px 10px', fontWeight: 700, fontSize: '0.78rem' }}>Total</td>
-                  <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)' }}>{totalBun}</td>
+                  <td style={{ padding: '6px 10px', fontWeight: 700, fontSize: '0.9rem' }}>Total</td>
+                  <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)', fontSize: '1rem' }}>{totalBun}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -935,11 +943,11 @@ export const Bookings = () => {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p style={{ margin: 0, fontWeight: 600 }}>Order #{order.id}</p>
-                <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                  {order.customer}{order.customerPhone ? ` • ${order.customerPhone}` : ''} • {order.items} Bun
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '1rem' }}>Order #{order.id}</p>
+                <p style={{ margin: '4px 0 0', fontSize: '0.88rem', color: 'var(--color-text-muted)' }}>
+                  {order.customer}{order.customerPhone ? ` • ${order.customerPhone}` : ''} • <strong style={{ color: 'var(--color-text-main)', fontWeight: 700 }}>{order.itemsList?.reduce((s: number, i: any) => s + (i.qty || 0), 0) || order.items} Bun</strong>
                 </p>
-                <p style={{ margin: '2px 0 0', fontSize: '0.85rem', fontWeight: 600 }}>
+                <p style={{ margin: '2px 0 0', fontSize: '1rem', fontWeight: 700 }}>
                   {order.amount}
                 </p>
               </div>
@@ -1027,11 +1035,11 @@ export const Bookings = () => {
           {phase.phase === 'Order Created' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
               {selectedOrder.itemsList?.map((item: any, idx: number) => (
-                <div key={idx} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
+                <div key={idx} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', fontSize: '0.9rem' }}>
                   {(() => { const info = getVariantInfo(item.variantId); return (
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-                        <div style={{ fontWeight: 600 }}>{info.label}</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{info.label}</div>
                         {isEditable && item.id && (
                           <button
                             onClick={async () => {
@@ -1044,7 +1052,7 @@ export const Bookings = () => {
                                   const updated = await res.json();
                                   const newItems = (updated.items || []).map((i: any) => ({
                                     id: i.id, variantId: i.productVariantId, name: String(i.productVariantId),
-                                    qty: i.noOfBundles || 1, weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [], price: i.unitRate || 0
+                                    qty: i.noOfBundles ?? 1, weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [], price: i.unitRate || 0
                                   }));
                                   const newTotal = `${(updated.totalAmount || 0).toLocaleString()}`;
                                   const patch = { ...selectedOrder, itemsList: newItems, items: newItems.length, amount: newTotal };
@@ -1069,7 +1077,7 @@ export const Bookings = () => {
                             onChange={(e) => setItemQtys(prev => { const n = [...prev]; n[idx] = e.target.value === '' ? '' : parseInt(e.target.value); return n; })}
                             style={{ width: '52px', height: '26px', padding: '1px 6px', fontSize: '0.8rem', display: 'inline-block' }}
                           />
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>bun</span>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.88rem', fontWeight: 600 }}>bun</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
                           <Input
@@ -1148,8 +1156,11 @@ export const Bookings = () => {
                   return (
                     <div key={idx} style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{getVariantInfo(item.variantId).label}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                          {getVariantInfo(item.variantId).label}
+                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-primary)', marginLeft: '6px' }}>{item.qty} Bun</span>
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
                           <span onClick={() => openWeightsModal(selectedOrder)} style={{ cursor: 'pointer', color: 'var(--color-primary)', borderBottom: '1px dashed var(--color-primary)' }}>
                             {totalWt > 0 ? `${totalWt} kg` : 'No weight'}
                           </span>
@@ -1164,7 +1175,7 @@ export const Bookings = () => {
                           <span>/kg</span>
                         </div>
                       </div>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '1rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
                         ₹{(totalWt * unitPrice).toLocaleString()}
                       </span>
                     </div>
@@ -1196,15 +1207,21 @@ export const Bookings = () => {
                         <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>/bundle</span>
                       </div>
                     </div>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap' }}>₹{transportTotal.toLocaleString()}</span>
+                    <span style={{ fontSize: '1rem', fontWeight: 700, whiteSpace: 'nowrap' }}>₹{transportTotal.toLocaleString()}</span>
                   </div>
                 ) : isEditable && (
-                  <button onClick={() => setTransport({ enabled: true })} style={{ width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--color-border)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--color-primary)', textAlign: 'left' }}>
+                  <button
+                    onClick={() => {
+                      const totalBundles = selectedOrder.itemsList?.reduce((s: number, i: any) => s + (i.qty || 0), 0) || 0;
+                      setTransport({ enabled: true, bundles: totalBundles });
+                    }}
+                    style={{ width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--color-border)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--color-primary)', textAlign: 'left' }}
+                  >
                     + Add Transportation
                   </button>
                 )}
 
-                <div style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '0.9rem' }}>
+                <div style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.1rem' }}>
                   <span>Total</span>
                   <span style={{ color: 'var(--color-primary)' }}>₹{grandTotal.toLocaleString()}</span>
                 </div>

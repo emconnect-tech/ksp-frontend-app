@@ -148,12 +148,12 @@ export const Reports = () => {
               <section style={{ marginBottom: 'var(--space-5)' }}>
                 <p style={{ margin: '0 0 var(--space-2)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Pending Deliveries
-                  <span style={{ marginLeft: '8px', fontWeight: 400, color: 'var(--color-primary)' }}>
+                  <span style={{ marginLeft: '8px', fontWeight: 700, color: 'var(--color-primary)', fontSize: '0.9rem' }}>
                     {pendingTiles.reduce((s, t) => s + t.totalBundles, 0)} bun · {pendingTiles.length} items
                   </span>
                 </p>
                 <div style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                     <thead>
                       <tr style={{ background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)' }}>
                         <th style={thStyle}>Product · Size</th>
@@ -164,16 +164,16 @@ export const Reports = () => {
                     <tbody>
                       {pendingTiles.sort((a, b) => b.totalBundles - a.totalBundles).map((s, i) => (
                         <tr key={i} style={{ borderBottom: i < pendingTiles.length - 1 ? '1px solid var(--color-border)' : 'none', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
-                          <td style={tdStyle}><strong>{s.label}</strong></td>
-                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)' }}>{s.totalBundles}</td>
-                          <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{s.orderCount}</td>
+                          <td style={{ ...tdStyle, fontWeight: 600, fontSize: '0.88rem' }}><strong>{s.label}</strong></td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)', fontSize: '1rem' }}>{s.totalBundles}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>{s.orderCount}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr style={{ borderTop: '2px solid var(--color-border)', background: 'var(--color-surface-muted)', fontWeight: 700 }}>
-                        <td style={tdStyle}>Total</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-primary)' }}>{pendingTiles.reduce((s, t) => s + t.totalBundles, 0)}</td>
+                        <td style={{ ...tdStyle, fontSize: '0.9rem' }}>Total</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-primary)', fontSize: '1rem' }}>{pendingTiles.reduce((s, t) => s + t.totalBundles, 0)}</td>
                         <td />
                       </tr>
                     </tfoot>
