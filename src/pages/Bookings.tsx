@@ -814,7 +814,12 @@ export const Bookings = () => {
       const orderTotal = orderItems.reduce((sum, item) => sum + item.qty * item.rate, 0);
       const newOrder = {
         id: response.id,
+        orderNumber: response.orderNumber,
+        customerId: selectedCustomer,
         customer: customerName,
+        customerPhone: cust?.phoneNumber || null,
+        customerPlace: cust?.place || null,
+        notes: response.notes || '',
         items: totalQty,
         totalWeight: `Pending`,
         amount: `${(response.totalAmount || orderTotal).toLocaleString()}`,
