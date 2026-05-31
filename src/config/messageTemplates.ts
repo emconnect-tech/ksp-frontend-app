@@ -25,46 +25,51 @@ export const buildEnquiryMessage = (
   items: Array<{ label: string; gsm?: number | null; qty: number; rate: number }>,
 ): string => {
   const itemsText = items.map(item => {
-    const gsmStr = item.gsm ? ` | ${item.gsm} GSM` : '';
-    const rateStr = item.rate > 0 ? ` | ₹${item.rate}/kg` : '';
+    const rateStr = item.rate > 0 ? `Rate: ₹${item.rate}/kg` : 'Rate: TBD';
     const lineTotal = item.qty * item.rate;
-    const totalStr = lineTotal > 0 ? ` → ₹${lineTotal.toLocaleString()}` : '';
-    return `• ${item.label}${gsmStr}\n  ${item.qty} Bundles${rateStr}${totalStr}`;
-  }).join('\n');
+    const totalStr = lineTotal > 0 ? ` | Amt: ₹${lineTotal.toLocaleString()}` : '';
+    return `${item.label}\nBun: ${item.qty} | ${rateStr}${totalStr}`;
+  }).join('\n\n');
 
   const grandTotal = items.reduce((sum, i) => sum + i.qty * i.rate, 0);
 
   return (
-    `*${orgName} — Enquiry / Quotation Template*\n` +
-    `Customer: ${customerName}\n` +
-    `Date: ${new Date().toLocaleDateString()}\n\n` +
-    `*Proposed Items:*\n${itemsText}\n\n` +
-    `*Estimated Total: ₹${grandTotal.toLocaleString()}*\n\n` +
-    `_This is a pre-booking enquiry. Final rates subject to confirmation._`
+    `*${orgName} — Enquiry*\n` +
+    `Party: ${customerName}\n` +
+    `Date: ${new Date().toLocaleDateString('en-IN')}\n\n` +
+    `${itemsText}\n\n` +
+    `*Est. Total: ₹${grandTotal.toLocaleString()}*\n` +
+    `_Rates subject to confirmation._`
   );
 };
 
 // Quotation share (order detail — Share Quotation button)
 export const buildQuotationMessage = (orgName: string, order: TemplateOrder): string => {
   const itemsText = order.itemsList.map(item => {
-    const totalWt = Array.isArray(item.weights)
-      ? item.weights.reduce((a, b) => a + (parseFloat(b as any) || 0), 0)
+    const weights = Array.isArray(item.weights)
+      ? item.weights.map(w => parseFloat(w as any) || 0).filter(w => w > 0)
+      : [];
+    const totalWt = weights.length > 0
+      ? weights.reduce((a, b) => a + b, 0)
       : (item.weightKg || 0);
-    const gsmStr = item.gsm ? ` | ${item.gsm} GSM` : '';
-    const wtStr = totalWt > 0 ? `${totalWt} kg` : 'Weight pending';
     const rate = item.price || 0;
     const lineTotal = totalWt * rate;
-    const rateStr = rate > 0 ? ` × ₹${rate}/kg = ₹${lineTotal.toLocaleString()}` : '';
-    return `• ${item.label}${gsmStr}\n  ${item.qty} Bundles | ${wtStr}${rateStr}`;
-  }).join('\n');
+
+    const wtLine = weights.length > 0
+      ? `Wt: ${weights.join('. ')} kg`
+      : totalWt > 0 ? `Wt: ${totalWt} kg` : `Wt: Pending`;
+    const rateStr = rate > 0 ? `Rate: ₹${rate}/kg | Amt: ₹${lineTotal.toLocaleString()}` : `Rate: TBD`;
+
+    return `${item.label}\nBun: ${item.qty} | ${wtLine}\n${rateStr}`;
+  }).join('\n\n');
 
   return (
-    `*${orgName} Quotation — #${order.orderNumber || order.id}*\n` +
-    `Customer: ${order.customer}\n` +
+    `*${orgName} — Quotation #${order.orderNumber || order.id}*\n` +
+    `Party: ${order.customer}\n` +
     `Date: ${order.date}\n\n` +
-    `*Items:*\n${itemsText}\n\n` +
-    `*Total Amount: ${order.amount}*\n\n` +
-    `_Please reply to confirm. Generated via ${orgName} Portal._`
+    `${itemsText}\n\n` +
+    `*Total: ₹${order.amount}*\n\n` +
+    `_Please reply to confirm._`
   );
 };
 
@@ -75,34 +80,40 @@ export const buildStatusUpdateMessage = (
   phase: string,
 ): string => {
   const itemsText = order.itemsList.map(item => {
-    const totalWt = Array.isArray(item.weights)
-      ? item.weights.reduce((a, b) => a + (parseFloat(b as any) || 0), 0)
+    const weights = Array.isArray(item.weights)
+      ? item.weights.map(w => parseFloat(w as any) || 0).filter(w => w > 0)
+      : [];
+    const totalWt = weights.length > 0
+      ? weights.reduce((a, b) => a + b, 0)
       : (item.weightKg || 0);
-    const gsmStr = item.gsm ? ` | ${item.gsm} GSM` : '';
-    const wtStr = totalWt > 0 ? `${totalWt} kg` : 'Weight pending';
     const rate = item.price || 0;
     const lineTotal = totalWt * rate;
-    const rateStr = rate > 0 ? ` × ₹${rate}/kg = ₹${lineTotal.toLocaleString()}` : '';
-    return `• ${item.label}${gsmStr}\n  ${item.qty} Bundles | ${wtStr}${rateStr}`;
-  }).join('\n');
+
+    const wtLine = weights.length > 0
+      ? `Wt: ${weights.join('. ')} kg`
+      : totalWt > 0 ? `Wt: ${totalWt} kg` : `Wt: Pending`;
+    const rateStr = rate > 0 ? `Rate: ₹${rate}/kg | Amt: ₹${lineTotal.toLocaleString()}` : '';
+
+    return `${item.label}\nBun: ${item.qty} | ${wtLine}${rateStr ? `\n${rateStr}` : ''}`;
+  }).join('\n\n');
 
   const statusLines: Record<string, string> = {
-    'Order Created':       `Status: Order has been created. Weights to be added shortly.`,
-    'Weights Added':       `Status: Weights recorded.\nTotal Weight: ${order.totalWeight}`,
-    'Quotation Generated': `Status: Quotation is ready.\n\n_Please reply to confirm._`,
-    'Bill Uploaded':       `Status: Bill has been prepared.\n\n_Contact us for any queries._`,
-    'Partially Dispatched':`Status: Partial shipment dispatched.`,
-    'Dispatched':          `Status: Order fully dispatched.`,
-    'Completed':           `Status: Order complete. Thank you for your business!`,
+    'Order Created':        `Status: Order created ✓\nWeights will be added shortly.`,
+    'Weights Added':        `Status: Weights recorded ✓\nTotal Wt: ${order.totalWeight}`,
+    'Quotation Generated':  `Status: Quotation ready ✓\n\n_Please reply to confirm._`,
+    'Bill Uploaded':        `Status: Bill prepared ✓\n\n_Contact us for any queries._`,
+    'Partially Dispatched': `Status: Partial dispatch done ✓`,
+    'Dispatched':           `Status: Order dispatched ✓`,
+    'Completed':            `Status: Order complete ✓\nThank you for your business!`,
   };
 
   return (
-    `*${orgName} Order Update — #${order.orderNumber || order.id}*\n` +
-    `Customer: ${order.customer}\n` +
+    `*${orgName} — Order #${order.orderNumber || order.id}*\n` +
+    `Party: ${order.customer}\n` +
     `Date: ${order.date}\n\n` +
-    `*Items:*\n${itemsText}\n\n` +
-    `*Total: ${order.amount}*\n\n` +
+    `${itemsText}\n\n` +
+    `*Total: ₹${order.amount}*\n\n` +
     (statusLines[phase] ?? `Status: ${phase}`) +
-    `\n\n_${orgName} Portal_`
+    `\n\n_${orgName}_`
   );
 };
