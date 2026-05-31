@@ -400,7 +400,7 @@ export const Bookings = () => {
   const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
   const [transportData, setTransportData] = useState<Record<string, { bundles: number; rate: number; enabled: boolean }>>({});
   const [itemPrices, setItemPrices] = useState<number[]>([]);
-  const [itemQtys, setItemQtys] = useState<number[]>([]);
+  const [itemQtys, setItemQtys] = useState<(number | string)[]>([]);
   const [savingPrices, setSavingPrices] = useState(false);
   const [selectedPhaseIdx, setSelectedPhaseIdx] = useState<number | null>(null);
   const [showAddItemForm, setShowAddItemForm] = useState(false);
@@ -418,6 +418,11 @@ export const Bookings = () => {
 
   const handleSavePrices = async () => {
     if (!selectedOrder) return;
+    const invalidQty = itemQtys.some(q => !q || Number(q) < 1);
+    if (invalidQty) {
+      setDialogState({ title: 'Invalid Quantity', message: 'All items must have a quantity of at least 1 bundle.' });
+      return;
+    }
     setSavingPrices(true);
     try {
       const payload = {
@@ -911,7 +916,7 @@ export const Bookings = () => {
                           <Input
                             type="number"
                             value={itemQtys[idx] ?? item.qty ?? 1}
-                            onChange={(e) => setItemQtys(prev => { const n = [...prev]; n[idx] = parseInt(e.target.value) || 1; return n; })}
+                            onChange={(e) => setItemQtys(prev => { const n = [...prev]; n[idx] = e.target.value === '' ? '' : parseInt(e.target.value); return n; })}
                             style={{ width: '52px', height: '26px', padding: '1px 6px', fontSize: '0.8rem', display: 'inline-block' }}
                           />
                           <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>bundles</span>
