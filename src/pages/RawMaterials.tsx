@@ -152,17 +152,36 @@ export const RawMaterials = () => {
     );
   };
 
+  const typePickerProducts = () =>
+    rawMaterialTypes
+      .filter((t: any) => t.isActive)
+      .map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        isActive: true,
+        variants: (t.variants || [])
+          .filter((v: any) => v.isActive)
+          .map((v: any) => ({ id: v.id, size: v.spec, gsm: v.gsm })),
+      }));
+
   const variantDropdown = (value: string, onChange: (v: string) => void) => (
     <div>
       <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Material Type (Optional)</label>
-      <select className="input-field" value={value} onChange={e => onChange(e.target.value)}>
-        <option value="">— None / Manual entry —</option>
-        {rawMaterialTypes.filter((t: any) => t.isActive).map((t: any) =>
-          t.variants?.filter((v: any) => v.isActive).map((v: any) => (
-            <option key={v.id} value={v.id}>{t.name}{v.gsm ? ` — ${v.gsm} GSM` : ''}{v.spec ? ` • ${v.spec}` : ''}</option>
-          ))
-        )}
-      </select>
+      <ProductVariantPicker
+        productsList={typePickerProducts() as any}
+        value={value}
+        onChange={(id) => onChange(String(id))}
+        placeholder="Search material type / size... (optional)"
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          style={{ marginTop: '6px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--color-text-muted)', textDecoration: 'underline', padding: 0 }}
+        >
+          Clear (manual entry)
+        </button>
+      )}
     </div>
   );
 
