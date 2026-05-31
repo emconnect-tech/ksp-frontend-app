@@ -726,6 +726,7 @@ export const Bookings = () => {
         action: 'Add Weights',
         date: new Date().toISOString().split('T')[0],
         itemsList: orderItems.map(item => ({
+          variantId: item.product,
           name: item.product,
           qty: item.qty,
           weights: Array(item.qty).fill(''),
