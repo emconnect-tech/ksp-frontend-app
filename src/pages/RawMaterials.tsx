@@ -46,7 +46,6 @@ export const RawMaterials = () => {
   });
 
   // --- Shared ---
-  const [gsmList, setGsmList] = useState<any[]>([]);
   const [rawMaterialTypes, setRawMaterialTypes] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]); // available stock for OUT (IN - OUT, by weight)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -104,8 +103,6 @@ export const RawMaterials = () => {
 
   useEffect(() => {
     fetchEntries();
-    fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : []).then(setGsmList).catch(() => {});
     fetch(`${API_BASE_URL}/api/v1/raw-material-types`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : []).then(setRawMaterialTypes).catch(() => {});
   }, []);
@@ -185,19 +182,6 @@ export const RawMaterials = () => {
     </div>
   );
 
-  const gsmField = (variantId: string, gsmValue: string, onGsmChange: (v: string) => void) => (
-    <div>
-      <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-      {variantId ? (
-        <Input type="text" value={gsmValue ? `${gsmValue} GSM` : ''} readOnly style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }} />
-      ) : (
-        <select className="input-field" value={gsmValue} onChange={e => onGsmChange(e.target.value)} required>
-          <option value="">Select GSM...</option>
-          {gsmList.map((g: any) => <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>)}
-        </select>
-      )}
-    </div>
-  );
 
   // ===================== IN =====================
 
@@ -267,7 +251,6 @@ export const RawMaterials = () => {
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
               <Input type="date" value={inFormData.entryDate} onChange={e => setInFormData(p => ({ ...p, entryDate: e.target.value }))} required />
             </div>
-            {gsmField(inFormData.rawMaterialTypeVariantId, inFormData.gsm, v => setInFormData(p => ({ ...p, gsm: v })))}
             <div className="grid-layout">
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
@@ -329,7 +312,6 @@ export const RawMaterials = () => {
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
                 <Input type="date" value={editData.entryDate} onChange={e => setEditData((p: any) => ({ ...p, entryDate: e.target.value }))} required />
               </div>
-              {gsmField(editData.rawMaterialTypeVariantId, editData.gsm, v => setEditData((p: any) => ({ ...p, gsm: v })))}
               <div className="grid-layout">
                 <div>
                   <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>No. of Rolls</label>
