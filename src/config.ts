@@ -10,6 +10,6 @@ export const config = {
   WHATSAPP_TYPE: (import.meta.env.VITE_WHATSAPP_TYPE || 'waweb') as 'waweb' | 'msg91' | 'none',
 
   // Only used when WHATSAPP_TYPE = 'waweb'
-  WHATSAPP_WEB_URL: import.meta.env.VITE_WHATSAPP_URL || 'http://localhost:3001',
+  WHATSAPP_WEB_URL: import.meta.env.VITE_WHATSAPP_URL || 'http://localhost:3001/wa',
   WHATSAPP_ADMIN_TOKEN: import.meta.env.VITE_WHATSAPP_ADMIN_TOKEN || '',
 };
