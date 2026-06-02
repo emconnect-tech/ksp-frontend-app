@@ -21,16 +21,19 @@ const defaultTheme: OrgTheme = {
 const ORG_KEY = 'ksp_org';
 
 export function getSubdomain(): string | null {
-  const parts = window.location.hostname.split('.');
-  const sub = parts.length > 1 && parts[0] !== 'www' ? parts[0] : null;
-  if (sub) return sub;
-
-  // local dev: ?org= param takes priority, then fall back to localStorage
+  // ?org= param always wins — saves to localStorage for subsequent loads
   const param = new URLSearchParams(window.location.search).get('org');
   if (param) {
     localStorage.setItem(ORG_KEY, param);
     return param;
   }
+
+  // Only treat the subdomain as the org if it's a known theme
+  // (avoids cloudfront/netlify/vercel hash subdomains being picked up)
+  const parts = window.location.hostname.split('.');
+  const sub = parts.length > 1 && parts[0] !== 'www' ? parts[0] : null;
+  if (sub && themes[sub]) return sub;
+
   return localStorage.getItem(ORG_KEY);
 }
 
