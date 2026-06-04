@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Package, ArrowUpRight, ArrowDownLeft, Layers, Search } from 'lucide-react';
+import { Users, Package, ArrowDownLeft, Layers, Search } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Badge } from '../design-system/components/ui/Badge';
 import { Input } from '../design-system/components/ui/Input';
@@ -18,6 +18,7 @@ export const Reports = () => {
   const [productSearch, setProductSearch] = useState('');
   const [rmSearch, setRmSearch] = useState('');
   const [expandedRmRow, setExpandedRmRow] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // overview
   const [stats, setStats] = useState<{ totalCustomers: number; todayOrdersCount: number } | null>(null);
@@ -27,10 +28,10 @@ export const Reports = () => {
   const [stockRows, setStockRows] = useState<any[]>([]);
 
   // raw materials tab
-  const [rmInOut, setRmInOut] = useState<Array<{ name: string; inKg: number; outKg: number; netKg: number }>>([]);
+  const [rmInOut, setRmInOut] = useState<Array<{ name: string; inKg: number; outKg: number; netKg: number; productionKg: number }>>([]);
   const [rmInventory, setRmInventory] = useState<Record<string, { availableKg: number; rolls: number; variants: Array<{ size: string; availableKg: number; rolls: number }> }>>({});
 
-  useEffect(() => {
+  const loadData = () => {
     // ── Overview stats ──
     fetch(`${API_BASE_URL}/api/v1/dashboard/stats`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : null).then(d => { if (d) setStats(d); }).catch(() => {});
@@ -41,20 +42,45 @@ export const Reports = () => {
       fetch(`${API_BASE_URL}/api/v1/orders`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
       fetch(`${API_BASE_URL}/api/v1/products?includeInactive=true`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
     ]).then(([stockEntries, orders, products]) => {
-      const stockByVariant: Record<string, number> = {};
-      stockEntries.forEach((s: any) => { stockByVariant[s.productVariantId] = (stockByVariant[s.productVariantId] || 0) + (s.noOfBundles || 0); });
+      const totalStockByVariant: Record<string, number> = {};
+      stockEntries.forEach((s: any) => {
+        totalStockByVariant[s.productVariantId] = (totalStockByVariant[s.productVariantId] || 0) + (s.noOfBundles || 0);
+      });
 
-      const demandByVariant: Record<string, number> = {};
-      orders.filter((o: any) => o.statusName !== 'COMPLETED')
-        .forEach((o: any) => { (o.items || []).forEach((i: any) => { demandByVariant[i.productVariantId] = (demandByVariant[i.productVariantId] || 0) + (i.noOfBundles || 0); }); });
+      // subtract bundles from dispatched/completed orders
+      const usedByVariant: Record<string, number> = {};
+      orders
+        .filter((o: any) => o.statusName === 'DISPATCHED' || o.statusName === 'COMPLETED')
+        .forEach((o: any) => {
+          (o.items || []).forEach((i: any) => {
+            if (i.productVariantId)
+              usedByVariant[i.productVariantId] = (usedByVariant[i.productVariantId] || 0) + (i.noOfBundles || 0);
+          });
+        });
+
+      const stockByVariant: Record<string, number> = {};
+      Object.entries(totalStockByVariant).forEach(([vid, total]) => {
+        const available = Math.max(0, total - (usedByVariant[vid] || 0));
+        if (available > 0) stockByVariant[vid] = available;
+      });
+
+      const pendingByVariant: Record<string, number> = {};
+      orders
+        .filter((o: any) => o.statusName !== 'DISPATCHED' && o.statusName !== 'COMPLETED')
+        .forEach((o: any) => {
+          (o.items || []).forEach((i: any) => {
+            if (i.productVariantId)
+              pendingByVariant[i.productVariantId] = (pendingByVariant[i.productVariantId] || 0) + (i.noOfBundles || 0);
+          });
+        });
 
       const rows: any[] = [];
       products.forEach((p: any) => {
         (p.variants || []).forEach((v: any) => {
           const stock = stockByVariant[v.id] || 0;
-          const demand = demandByVariant[v.id] || 0;
-          if (stock > 0 || demand > 0)
-            rows.push({ item: `${p.name} • ${v.size || ''}`.trim(), gsm: v.gsm, stock, demand, status: demand > stock ? 'Short' : stock > demand * 1.5 ? 'Surplus' : 'OK' });
+          const pending = pendingByVariant[v.id] || 0;
+          if (stock > 0 || pending > 0)
+            rows.push({ item: `${p.name} • ${v.size || ''}`.trim(), gsm: v.gsm, stock, pending });
         });
       });
       setStockRows(rows.sort((a, b) => b.stock - a.stock));
@@ -62,7 +88,7 @@ export const Reports = () => {
       // pending tiles
       const today = new Date().toISOString().split('T')[0];
       const statsMap: Record<string, { label: string; totalBundles: number; orderCount: number }> = {};
-      orders.filter((o: any) => { const d = o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : today; return o.statusName !== 'COMPLETED' || d < today; })
+      orders.filter((o: any) => o.statusName !== 'COMPLETED' && o.statusName !== 'DISPATCHED')
         .forEach((o: any) => {
           (o.items || []).forEach((i: any) => {
             if (!i.productVariantId) return;
@@ -77,21 +103,39 @@ export const Reports = () => {
       setPendingTiles(Object.values(statsMap).filter(s => s.totalBundles > 0));
     }).catch(() => {});
 
-    // ── Raw materials ──
+    // ── Raw materials + production pending ──
     Promise.all([
       fetch(`${API_BASE_URL}/api/v1/raw-materials`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
       fetch(`${API_BASE_URL}/api/v1/raw-material-out`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
       fetch(`${API_BASE_URL}/api/v1/raw-materials/inventory`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
-    ]).then(([inEntries, outEntries, inventory]) => {
+      fetch(`${API_BASE_URL}/api/v1/stock-in`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+    ]).then(([inEntries, outEntries, inventory, stockInEntries]) => {
       const byType: Record<string, { inKg: number; outKg: number }> = {};
-      inEntries.forEach((e: any) => { const n = e.materialTypeName || 'Unknown'; if (!byType[n]) byType[n] = { inKg: 0, outKg: 0 }; byType[n].inKg += e.weightKg || 0; });
-      outEntries.forEach((e: any) => { const n = e.materialTypeName || 'Unknown'; if (!byType[n]) byType[n] = { inKg: 0, outKg: 0 }; byType[n].outKg += e.weightKg || 0; });
-      setRmInOut(Object.entries(byType).map(([name, v]) => ({ name, inKg: +fmt(v.inKg), outKg: +fmt(v.outKg), netKg: +fmt(v.inKg - v.outKg) })).sort((a, b) => b.inKg - a.inKg));
+      const typeName = (e: any) => e.materialTypeName || (e.gsm ? `${e.gsm} GSM` : 'Unlabelled');
+      inEntries.forEach((e: any) => { const n = typeName(e); if (!byType[n]) byType[n] = { inKg: 0, outKg: 0 }; byType[n].inKg += e.weightKg || 0; });
+      outEntries.forEach((e: any) => { const n = typeName(e); if (!byType[n]) byType[n] = { inKg: 0, outKg: 0 }; byType[n].outKg += e.weightKg || 0; });
+
+      // map gsm -> material type name from out entries (for linking stock-in back to type)
+      const gsmToType: Record<number, string> = {};
+      outEntries.forEach((e: any) => { if (e.gsm) gsmToType[e.gsm] = typeName(e); });
+      const stockInByType: Record<string, number> = {};
+      stockInEntries.forEach((e: any) => {
+        const typeName = gsmToType[e.gsm];
+        if (typeName) stockInByType[typeName] = (stockInByType[typeName] || 0) + (e.weightKg || 0);
+      });
+
+      setRmInOut(Object.entries(byType).map(([name, v]) => ({
+        name,
+        inKg: +fmt(v.inKg),
+        outKg: +fmt(v.outKg),
+        netKg: +fmt(v.inKg - v.outKg),
+        productionKg: +fmt(v.outKg - (stockInByType[name] || 0)),
+      })).sort((a, b) => b.inKg - a.inKg));
 
       // inventory grouped by type, with variant drill-down
       const inv: Record<string, { availableKg: number; rolls: number; variants: any[] }> = {};
       inventory.forEach((i: any) => {
-        const n = i.materialTypeName || 'Unknown';
+        const n = i.materialTypeName || (i.gsm ? `${i.gsm} GSM` : 'Unlabelled');
         if (!inv[n]) inv[n] = { availableKg: 0, rolls: 0, variants: [] };
         inv[n].availableKg += i.availableWeightKg || 0;
         inv[n].rolls += i.availableRolls || 0;
@@ -99,7 +143,16 @@ export const Reports = () => {
       });
       Object.values(inv).forEach(v => { v.availableKg = +fmt(v.availableKg); });
       setRmInventory(inv);
+
     }).catch(() => {});
+
+    setLastUpdated(new Date());
+  };
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 30000);
+    return () => clearInterval(interval);
   }, [token]);
 
   // ── Filtered rows ──
@@ -109,13 +162,18 @@ export const Reports = () => {
   const filteredRmInOut = rmInOut.filter(r => !rmSearch || r.name.toLowerCase().includes(rmSearch.toLowerCase()));
   const filteredRmInv = Object.entries(rmInventory).filter(([name]) => !rmSearch || name.toLowerCase().includes(rmSearch.toLowerCase()));
 
-  const statusColor = (s: string) => s === 'Short' ? '#fa5252' : s === 'Surplus' ? '#2f9e44' : 'var(--color-text-muted)';
-
   return (
     <div className="page-content" style={{ animation: 'fadeIn 0.4s ease-out' }}>
-      <header style={{ marginBottom: 'var(--space-5)' }}>
-        <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-primary)' }}>Reports</h1>
-        <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Live inventory and production analytics.</p>
+      <header style={{ marginBottom: 'var(--space-5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-primary)' }}>Reports</h1>
+          <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : 'Loading...'}
+          </p>
+        </div>
+        <button onClick={loadData} style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--color-text-muted)' }}>
+          ↻ Refresh
+        </button>
       </header>
 
       <SegmentedControl
@@ -252,38 +310,27 @@ export const Reports = () => {
                     <tr style={{ background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)' }}>
                       <th style={thStyle}>Product · Size</th>
                       <th style={{ ...thStyle, textAlign: 'center' }}>GSM</th>
-                      <th style={{ ...thStyle, textAlign: 'right' }}>Stock</th>
-                      <th style={{ ...thStyle, textAlign: 'right' }}>Demand</th>
-                      <th style={{ ...thStyle, textAlign: 'right' }}>Surplus</th>
-                      <th style={{ ...thStyle, textAlign: 'center' }}>Status</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Stock (bun)</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Pending to Deliver</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredStock.map((row, i) => {
-                      const surplus = row.stock - row.demand;
-                      return (
-                        <tr key={i} style={{ borderBottom: '1px solid var(--color-border)', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
-                          <td style={tdStyle}><strong>{row.item}</strong></td>
-                          <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--color-text-muted)' }}>{row.gsm ?? '—'}</td>
-                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{row.stock}</td>
-                          <td style={{ ...tdStyle, textAlign: 'right', color: row.demand > row.stock ? '#fa5252' : 'inherit', fontWeight: 600 }}>{row.demand}</td>
-                          <td style={{ ...tdStyle, textAlign: 'right', color: surplus < 0 ? '#fa5252' : '#2f9e44', fontWeight: 700 }}>{surplus > 0 ? '+' : ''}{surplus}</td>
-                          <td style={{ ...tdStyle, textAlign: 'center' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: statusColor(row.status), background: row.status === 'Short' ? '#fff5f5' : row.status === 'Surplus' ? '#ebfbee' : 'var(--color-surface-muted)', padding: '2px 8px', borderRadius: '12px' }}>
-                              {row.status}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {filteredStock.map((row, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--color-border)', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
+                        <td style={tdStyle}><strong>{row.item}</strong></td>
+                        <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--color-text-muted)' }}>{row.gsm ?? '—'}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: 'var(--color-primary)' }}>{row.stock}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: row.pending > 0 ? '#f08c00' : 'var(--color-text-muted)' }}>
+                          {row.pending > 0 ? row.pending : '—'}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                   <tfoot>
                     <tr style={{ background: 'var(--color-surface-muted)', borderTop: '2px solid var(--color-border)', fontWeight: 700 }}>
                       <td style={tdStyle} colSpan={2}>Total ({filteredStock.length} items)</td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>{filteredStock.reduce((s, r) => s + r.stock, 0)}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>{filteredStock.reduce((s, r) => s + r.demand, 0)}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>{filteredStock.reduce((s, r) => s + r.stock - r.demand, 0) > 0 ? '+' : ''}{filteredStock.reduce((s, r) => s + r.stock - r.demand, 0)}</td>
-                      <td />
+                      <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-primary)' }}>{filteredStock.reduce((s, r) => s + r.stock, 0)}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#f08c00' }}>{filteredStock.reduce((s, r) => s + (r.pending || 0), 0) || '—'}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -322,6 +369,7 @@ export const Reports = () => {
                       <th style={{ ...thStyle, textAlign: 'right' }}>Out (kg)</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>Net (kg)</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>% Used</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Production (kg)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -332,6 +380,9 @@ export const Reports = () => {
                         <td style={{ ...tdStyle, textAlign: 'right', color: '#fa5252', fontWeight: 600 }}>{row.outKg}</td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: row.netKg < 0 ? '#fa5252' : 'var(--color-primary)' }}>{row.netKg}</td>
                         <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-text-muted)' }}>{pct(row.outKg, row.inKg)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: row.productionKg > 0 ? '#f08c00' : '#2f9e44' }}>
+                          {row.productionKg > 0 ? row.productionKg : '✓'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -342,6 +393,7 @@ export const Reports = () => {
                       <td style={{ ...tdStyle, textAlign: 'right', color: '#fa5252' }}>{fmt(filteredRmInOut.reduce((s, r) => s + r.outKg, 0))}</td>
                       <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-primary)' }}>{fmt(filteredRmInOut.reduce((s, r) => s + r.netKg, 0))}</td>
                       <td />
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#f08c00' }}>{fmt(filteredRmInOut.reduce((s, r) => s + r.productionKg, 0))}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -405,6 +457,7 @@ export const Reports = () => {
             )}
           </>
         )}
+
       </div>
 
       <style>{`

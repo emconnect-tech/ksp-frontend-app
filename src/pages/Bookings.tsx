@@ -872,7 +872,7 @@ export const Bookings = () => {
     const today = new Date().toISOString().split('T')[0];
     const filteredOrders = orders.filter(o =>
       tab === 'pending'
-        ? (o.phase !== 'Completed' || o.date < today)
+        ? o.phase !== 'Completed'
         : o.phase === 'Completed'
     );
 

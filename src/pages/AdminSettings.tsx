@@ -16,11 +16,10 @@ export const AdminSettings = () => {
     const params = new URLSearchParams(location.search);
     return params.get('tab') || 'catalog';
   });
-  const [catalogView, setCatalogView] = useState<'products' | 'rawMaterials'>('products');
   const [catalogSearch, setCatalogSearch] = useState('');
 
   const [showAddProduct, setShowAddProduct] = useState(false);
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { canDelete, canManageCatalog, canManageUsers } = usePermissions();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -56,13 +55,8 @@ export const AdminSettings = () => {
   const [editingRmTypeId, setEditingRmTypeId] = useState<string | null>(null);
   const [editRmName, setEditRmName] = useState('');
   const [editRmDesc, setEditRmDesc] = useState('');
-  const [addingVariantForRmTypeId, setAddingVariantForRmTypeId] = useState<string | null>(null);
-  const [newRmVariantGsm, setNewRmVariantGsm] = useState('');
-  const [newRmVariantSpec, setNewRmVariantSpec] = useState('');
-  const [newRmVariantWeight, setNewRmVariantWeight] = useState('');
-  const [editingRmVariant, setEditingRmVariant] = useState<{ typeId: string; variantId: string } | null>(null);
-  const [editRmVariantData, setEditRmVariantData] = useState({ gsm: '', spec: '', weight: '' });
-  const [confirmDeleteRmVariant, setConfirmDeleteRmVariant] = useState<{ typeId: string; variantId: string; label: string } | null>(null);
+  const [confirmDeleteRmTypeId, setConfirmDeleteRmTypeId] = useState<string | null>(null);
+  const [catalogView, setCatalogView] = useState<'products' | 'rawMaterials'>('products');
 
   useEffect(() => {
     if (tab === 'users') {
@@ -87,14 +81,18 @@ export const AdminSettings = () => {
 
   // --- WhatsApp ---
   const fetchWaStatus = async () => {
+    const orgId = user?.orgId;
+    const orgParam = orgId ? `orgId=${orgId}` : '';
     try {
-      const statusRes = await fetch(`${config.WHATSAPP_WEB_URL}/status`);
+      const statusRes = await fetch(`${config.WHATSAPP_WEB_URL}/status?${orgParam}`);
       if (!statusRes.ok) { setWaStatus('disconnected'); return; }
       const { status } = await statusRes.json();
 
       if (status === 'qr_pending') {
-        const tokenParam = config.WHATSAPP_ADMIN_TOKEN ? `?token=${config.WHATSAPP_ADMIN_TOKEN}` : '';
-        const qrRes = await fetch(`${config.WHATSAPP_WEB_URL}/qr${tokenParam}`);
+        const params = new URLSearchParams();
+        if (orgId) params.set('orgId', orgId);
+        if (config.WHATSAPP_ADMIN_TOKEN) params.set('token', config.WHATSAPP_ADMIN_TOKEN);
+        const qrRes = await fetch(`${config.WHATSAPP_WEB_URL}/qr?${params.toString()}`);
         if (qrRes.ok) {
           const { qr } = await qrRes.json();
           setWaQr(qr);
@@ -211,10 +209,7 @@ export const AdminSettings = () => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ name: newRmName, description: newRmDesc || null }),
       });
-      if (res.ok) {
-        setNewRmName(''); setNewRmDesc(''); setShowAddRmType(false);
-        fetchRawMaterialTypes();
-      }
+      if (res.ok) { setNewRmName(''); setNewRmDesc(''); setShowAddRmType(false); fetchRawMaterialTypes(); }
     } catch (e) { console.error(e); }
   };
 
@@ -232,57 +227,19 @@ export const AdminSettings = () => {
   const toggleRmTypeStatus = async (id: string) => {
     try {
       await fetch(`${API_BASE_URL}/api/v1/raw-material-types/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${token}` },
+        method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` },
       });
       fetchRawMaterialTypes();
     } catch (e) { console.error(e); }
   };
 
-  const handleAddRmVariant = async (typeId: string) => {
+  const handleDeleteRmType = async () => {
+    if (!confirmDeleteRmTypeId) return;
+    const id = confirmDeleteRmTypeId;
+    setConfirmDeleteRmTypeId(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/raw-material-types/${typeId}/variants`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          gsm: newRmVariantGsm ? parseInt(newRmVariantGsm) : null,
-          spec: newRmVariantSpec || null,
-          weightPerRollKg: newRmVariantWeight ? parseFloat(newRmVariantWeight) : null,
-        }),
-      });
-      if (res.ok) {
-        setAddingVariantForRmTypeId(null);
-        setNewRmVariantGsm(''); setNewRmVariantSpec(''); setNewRmVariantWeight('');
-        fetchRawMaterialTypes();
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleSaveRmVariant = async () => {
-    if (!editingRmVariant) return;
-    const { typeId, variantId } = editingRmVariant;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/raw-material-types/${typeId}/variants/${variantId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          gsm: editRmVariantData.gsm ? parseInt(editRmVariantData.gsm) : null,
-          spec: editRmVariantData.spec || null,
-          weightPerRollKg: editRmVariantData.weight ? parseFloat(editRmVariantData.weight) : null,
-        }),
-      });
-      if (res.ok) { setEditingRmVariant(null); fetchRawMaterialTypes(); }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleDeleteRmVariant = async () => {
-    if (!confirmDeleteRmVariant) return;
-    const { typeId, variantId } = confirmDeleteRmVariant;
-    setConfirmDeleteRmVariant(null);
-    try {
-      await fetch(`${API_BASE_URL}/api/v1/raw-material-types/${typeId}/variants/${variantId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
+      await fetch(`${API_BASE_URL}/api/v1/raw-material-types/${id}`, {
+        method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` },
       });
       fetchRawMaterialTypes();
     } catch (e) { console.error(e); }
@@ -613,9 +570,10 @@ export const AdminSettings = () => {
                       <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>GSM</div>
                       <select className="input-field" value={editVariantData.gsm} onChange={e => setEditVariantData(d => ({ ...d, gsm: e.target.value }))} style={{ width: '100%', fontSize: '0.85rem' }} autoFocus>
                         <option value="">Select GSM</option>
-                        {gsmList.filter((g: any) => g.isActive).map((g: any) => (
-                          <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
-                        ))}
+                        {rawMaterialTypes.filter((t: any) => t.isActive).map((t: any) => {
+                          const gsmVal = t.name?.match(/^(\d+)/)?.[1];
+                          return gsmVal ? <option key={t.id} value={gsmVal}>{t.name}</option> : null;
+                        })}
                       </select>
                     </div>
                     <div style={{ flex: 1 }}>
@@ -663,9 +621,10 @@ export const AdminSettings = () => {
                     <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>GSM</div>
                     <select className="input-field" value={newVariantGsm} onChange={e => setNewVariantGsm(e.target.value)} style={{ width: '100%', fontSize: '0.85rem' }}>
                       <option value="">Select GSM</option>
-                      {gsmList.filter((g: any) => g.isActive).map((g: any) => (
-                        <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>
-                      ))}
+                      {rawMaterialTypes.filter((t: any) => t.isActive).map((t: any) => {
+                        const gsmVal = t.name?.match(/^(\d+)/)?.[1];
+                        return gsmVal ? <option key={t.id} value={gsmVal}>{t.name}</option> : null;
+                      })}
                     </select>
                   </div>
                   <div style={{ flex: 1 }}>
@@ -700,38 +659,27 @@ export const AdminSettings = () => {
     );
   };
 
+
   const renderRawMaterialsCatalog = () => {
     const q = catalogSearch.toLowerCase();
     const filteredRmTypes = rawMaterialTypes.filter((t: any) =>
-      !q ||
-      t.name?.toLowerCase().includes(q) ||
-      t.description?.toLowerCase().includes(q) ||
-      t.variants?.some((v: any) =>
-        v.spec?.toLowerCase().includes(q) || String(v.gsm || '').includes(q)
-      )
+      !q || t.name?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q)
     );
     return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-      <Input
-        type="text"
-        placeholder="Search rolls, GSM, size..."
-        value={catalogSearch}
-        onChange={e => setCatalogSearch(e.target.value)}
-      />
+      <Input type="text" placeholder="Search roll types..." value={catalogSearch} onChange={e => setCatalogSearch(e.target.value)} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ margin: 0 }}>Rolls Godown</h3>
         {canManageCatalog && !showAddRmType && (
-          <Button variant="primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => setShowAddRmType(true)}>
-            + Add Roll Type
-          </Button>
+          <Button variant="primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => setShowAddRmType(true)}>+ Add Roll Type</Button>
         )}
       </div>
 
       {showAddRmType && (
         <Card style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-primary)' }}>
-          <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>New Raw Material Type</h3>
-          <Input type="text" placeholder="Name (e.g. HDPE Tape, PP Flat Yarn)" style={{ marginBottom: 'var(--space-3)' }} value={newRmName} onChange={(e) => setNewRmName(e.target.value)} autoFocus />
-          <Input type="text" placeholder="Description (Optional)" style={{ marginBottom: 'var(--space-4)' }} value={newRmDesc} onChange={(e) => setNewRmDesc(e.target.value)} />
+          <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>New Roll Type</h3>
+          <Input type="text" placeholder="Name (e.g. 68 GSM Blue)" style={{ marginBottom: 'var(--space-3)' }} value={newRmName} onChange={e => setNewRmName(e.target.value)} autoFocus />
+          <Input type="text" placeholder="Description (optional)" style={{ marginBottom: 'var(--space-4)' }} value={newRmDesc} onChange={e => setNewRmDesc(e.target.value)} />
           <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             <Button variant="outline" style={{ flex: 1 }} onClick={() => { setShowAddRmType(false); setNewRmName(''); setNewRmDesc(''); }}>Cancel</Button>
             <Button variant="primary" style={{ flex: 1 }} onClick={handleAddRmType}>Save</Button>
@@ -740,108 +688,44 @@ export const AdminSettings = () => {
       )}
 
       {filteredRmTypes.length === 0 && q && (
-        <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>No rolls match "{catalogSearch}"</p>
+        <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>No roll types match "{catalogSearch}"</p>
       )}
       {filteredRmTypes.map((rmType: any) => (
         <Card key={rmType.id} style={{ padding: 'var(--space-4)', opacity: rmType.isActive ? 1 : 0.6 }}>
-          <div style={{ marginBottom: 'var(--space-3)' }}>
-            {editingRmTypeId === rmType.id ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                <Input type="text" value={editRmName} onChange={e => setEditRmName(e.target.value)} placeholder="Type name" autoFocus />
-                <Input type="text" value={editRmDesc} onChange={e => setEditRmDesc(e.target.value)} placeholder="Description (optional)" />
-                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                  <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => setEditingRmTypeId(null)}>Cancel</Button>
-                  <Button variant="primary" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => handleSaveRmType(rmType.id)}>Save</Button>
-                </div>
+          {editingRmTypeId === rmType.id ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              <Input type="text" value={editRmName} onChange={e => setEditRmName(e.target.value)} placeholder="Type name" autoFocus />
+              <Input type="text" value={editRmDesc} onChange={e => setEditRmDesc(e.target.value)} placeholder="Description (optional)" />
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => setEditingRmTypeId(null)}>Cancel</Button>
+                <Button variant="primary" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => handleSaveRmType(rmType.id)}>Save</Button>
               </div>
-            ) : (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <strong style={{ fontSize: '1.1rem' }}>{rmType.name}</strong>
-                    {!rmType.isActive && <Badge status="completed">Disabled</Badge>}
-                  </div>
-                  {rmType.description && <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>{rmType.description}</div>}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <strong style={{ fontSize: '1.05rem' }}>{rmType.name}</strong>
+                  {!rmType.isActive && <Badge status="completed">Disabled</Badge>}
                 </div>
-                {canManageCatalog && (
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
-                    <Button variant="outline" style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={() => { setEditingRmTypeId(rmType.id); setEditRmName(rmType.name); setEditRmDesc(rmType.description || ''); }}>Edit</Button>
-                    <Button variant={rmType.isActive ? 'outline' : 'primary'} style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={() => toggleRmTypeStatus(rmType.id)}>{rmType.isActive ? 'Disable' : 'Enable'}</Button>
-                  </div>
-                )}
+                {rmType.description && <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>{rmType.description}</div>}
               </div>
-            )}
-          </div>
-
-          {rmType.variants && rmType.variants.map((v: any, i: number) => (
-            <div key={v.id || i} style={{ background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-2)', overflow: 'hidden' }}>
-              {editingRmVariant?.variantId === v.id ? (
-                <div style={{ padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                    <select className="input-field" value={editRmVariantData.gsm} onChange={e => setEditRmVariantData(d => ({ ...d, gsm: e.target.value }))} style={{ flex: 1, fontSize: '0.85rem' }} autoFocus>
-                      <option value="">GSM...</option>
-                      {gsmList.filter((g: any) => g.isActive).map((g: any) => (
-                        <option key={g.id} value={String(g.value)}>{g.value} GSM</option>
-                      ))}
-                    </select>
-                    <Input placeholder="Spec (e.g. 3cm flat)" value={editRmVariantData.spec} onChange={e => setEditRmVariantData(d => ({ ...d, spec: e.target.value }))} style={{ flex: 1 }} />
-                    <Input placeholder="Wt/roll (kg)" type="number" value={editRmVariantData.weight} onChange={e => setEditRmVariantData(d => ({ ...d, weight: e.target.value }))} style={{ flex: 1 }} />
-                  </div>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                    <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => setEditingRmVariant(null)}>Cancel</Button>
-                    <Button variant="primary" style={{ flex: 1, fontSize: '0.8rem' }} onClick={handleSaveRmVariant}>Save</Button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ padding: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem' }}>
-                    {v.gsm ? `${v.gsm} GSM` : ''}
-                    {v.spec ? (v.gsm ? ` • ${v.spec}` : v.spec) : ''}
-                    {v.weightPerRollKg ? ` • ${v.weightPerRollKg}kg/roll` : ''}
-                    {!v.gsm && !v.spec ? 'Unspecified' : ''}
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    {canManageCatalog && v.id && (
-                      <button onClick={() => { setEditingRmVariant({ typeId: rmType.id, variantId: v.id }); setEditRmVariantData({ gsm: String(v.gsm || ''), spec: v.spec || '', weight: String(v.weightPerRollKg || '') }); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', fontSize: '0.75rem', padding: '2px 4px' }} title="Edit">✎</button>
-                    )}
-                    {canDelete && v.id && (
-                      <button onClick={() => setConfirmDeleteRmVariant({ typeId: rmType.id, variantId: v.id, label: v.gsm ? `${v.gsm} GSM` : 'variant' })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '0.75rem', padding: '2px 4px', lineHeight: 1 }} title="Remove">✕</button>
-                    )}
-                  </div>
+              {canManageCatalog && (
+                <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
+                  <Button variant="outline" style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={() => { setEditingRmTypeId(rmType.id); setEditRmName(rmType.name); setEditRmDesc(rmType.description || ''); }}>Edit</Button>
+                  <Button variant={rmType.isActive ? 'outline' : 'primary'} style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={() => toggleRmTypeStatus(rmType.id)}>{rmType.isActive ? 'Disable' : 'Enable'}</Button>
+                  {canDelete && (
+                    <Button variant="outline" style={{ padding: '2px 8px', fontSize: '0.75rem', color: '#fa5252', borderColor: '#fa5252' }} onClick={() => setConfirmDeleteRmTypeId(rmType.id)}>Delete</Button>
+                  )}
                 </div>
               )}
             </div>
-          ))}
-
-          {canManageCatalog && (
-            addingVariantForRmTypeId === rmType.id ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)', padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)' }}>
-                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                  <select className="input-field" value={newRmVariantGsm} onChange={e => setNewRmVariantGsm(e.target.value)} style={{ flex: 1, fontSize: '0.85rem' }}>
-                    <option value="">GSM...</option>
-                    {gsmList.filter((g: any) => g.isActive).map((g: any) => (
-                      <option key={g.id} value={String(g.value)}>{g.value} GSM</option>
-                    ))}
-                  </select>
-                  <Input placeholder="Spec (e.g. 3cm flat)" value={newRmVariantSpec} onChange={e => setNewRmVariantSpec(e.target.value)} style={{ flex: 1 }} />
-                  <Input placeholder="Wt/roll (kg)" type="number" value={newRmVariantWeight} onChange={e => setNewRmVariantWeight(e.target.value)} style={{ flex: 1 }} />
-                </div>
-                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                  <Button variant="outline" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => { setAddingVariantForRmTypeId(null); setNewRmVariantGsm(''); setNewRmVariantSpec(''); setNewRmVariantWeight(''); }}>Cancel</Button>
-                  <Button variant="primary" style={{ flex: 1, fontSize: '0.8rem' }} onClick={() => handleAddRmVariant(rmType.id)}>Save</Button>
-                </div>
-              </div>
-            ) : (
-              <Button variant="outline" style={{ width: '100%', borderStyle: 'dashed', fontSize: '0.8rem', padding: 'var(--space-1)' }} onClick={() => { setAddingVariantForRmTypeId(rmType.id); setNewRmVariantGsm(''); setNewRmVariantSpec(''); setNewRmVariantWeight(''); }}>
-                + Add Variant
-              </Button>
-            )
           )}
         </Card>
       ))}
 
-      {rawMaterialTypes.length === 0 && (
-        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>No rolls defined yet.</p>
+      {rawMaterialTypes.length === 0 && !q && (
+        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>No roll types defined yet.</p>
       )}
     </div>
     );
@@ -888,8 +772,10 @@ export const AdminSettings = () => {
               onClick={async () => {
                 if (!window.confirm('Disconnect WhatsApp? You will need to scan a new QR code to reconnect.')) return;
                 try {
-                  const tokenParam = config.WHATSAPP_ADMIN_TOKEN ? `?token=${config.WHATSAPP_ADMIN_TOKEN}` : '';
-                  await fetch(`${config.WHATSAPP_WEB_URL}/logout${tokenParam}`, { method: 'POST' });
+                  const params = new URLSearchParams();
+                  if (user?.orgId) params.set('orgId', user.orgId);
+                  if (config.WHATSAPP_ADMIN_TOKEN) params.set('token', config.WHATSAPP_ADMIN_TOKEN);
+                  await fetch(`${config.WHATSAPP_WEB_URL}/logout?${params.toString()}`, { method: 'POST' });
                   setWaStatus('loading');
                   setTimeout(fetchWaStatus, 2500);
                 } catch (e) {
@@ -922,11 +808,11 @@ export const AdminSettings = () => {
 
         {waStatus === 'disconnected' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)', padding: 'var(--space-6)' }}>
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', color: '#fa5252' }}>!</div>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff9db', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', color: '#f08c00' }}>!</div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#fa5252' }}>Service Unreachable</div>
+              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#f08c00' }}>WhatsApp Disconnected</div>
               <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                WhatsApp service is offline. Make sure it is running and try again.
+                Service is running but WhatsApp is not linked. Reconnecting — a QR code will appear shortly.
               </div>
             </div>
           </div>
@@ -937,6 +823,19 @@ export const AdminSettings = () => {
 
   return (
     <div className="page-content">
+      {confirmDeleteRmTypeId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
+          <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: '320px', width: '100%' }}>
+            <h3 style={{ margin: '0 0 var(--space-3) 0', fontSize: '1rem' }}>Delete Roll Type?</h3>
+            <p style={{ margin: '0 0 var(--space-5) 0', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>This will permanently delete this roll type. This cannot be undone.</p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <Button variant="outline" style={{ flex: 1 }} onClick={() => setConfirmDeleteRmTypeId(null)}>Cancel</Button>
+              <Button variant="primary" style={{ flex: 1, background: '#fa5252', borderColor: '#fa5252' }} onClick={handleDeleteRmType}>Delete</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmDelete && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
           <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: '320px', width: '100%' }}>
@@ -963,18 +862,6 @@ export const AdminSettings = () => {
         </div>
       )}
 
-      {confirmDeleteRmVariant && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
-          <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: '320px', width: '100%' }}>
-            <h3 style={{ margin: '0 0 var(--space-3) 0', fontSize: '1rem' }}>Remove Variant?</h3>
-            <p style={{ margin: '0 0 var(--space-5) 0', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Remove <strong>{confirmDeleteRmVariant.label}</strong>? This cannot be undone.</p>
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <Button variant="outline" style={{ flex: 1 }} onClick={() => setConfirmDeleteRmVariant(null)}>Cancel</Button>
-              <Button variant="primary" style={{ flex: 1, background: '#fa5252', borderColor: '#fa5252' }} onClick={handleDeleteRmVariant}>Remove</Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <h2 style={{ marginTop: 0, marginBottom: 'var(--space-6)', fontSize: '1.25rem' }}>
         Superadmin Panel
@@ -995,18 +882,8 @@ export const AdminSettings = () => {
         {tab === 'catalog' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <button
-                onClick={() => { setCatalogView('products'); setCatalogSearch(''); }}
-                style={{ padding: '6px 16px', borderRadius: 'var(--radius-md)', border: '1px solid', fontSize: '0.85rem', cursor: 'pointer', fontWeight: catalogView === 'products' ? 600 : 400, background: catalogView === 'products' ? 'var(--color-primary)' : 'transparent', color: catalogView === 'products' ? 'white' : 'var(--color-text-muted)', borderColor: catalogView === 'products' ? 'var(--color-primary)' : 'var(--color-border)' }}
-              >
-                Products
-              </button>
-              <button
-                onClick={() => { setCatalogView('rawMaterials'); setCatalogSearch(''); }}
-                style={{ padding: '6px 16px', borderRadius: 'var(--radius-md)', border: '1px solid', fontSize: '0.85rem', cursor: 'pointer', fontWeight: catalogView === 'rawMaterials' ? 600 : 400, background: catalogView === 'rawMaterials' ? 'var(--color-primary)' : 'transparent', color: catalogView === 'rawMaterials' ? 'white' : 'var(--color-text-muted)', borderColor: catalogView === 'rawMaterials' ? 'var(--color-primary)' : 'var(--color-border)' }}
-              >
-                Rolls Godown
-              </button>
+              <button onClick={() => { setCatalogView('products'); setCatalogSearch(''); }} style={{ padding: '6px 16px', borderRadius: 'var(--radius-md)', border: '1px solid', fontSize: '0.85rem', cursor: 'pointer', fontWeight: catalogView === 'products' ? 600 : 400, background: catalogView === 'products' ? 'var(--color-primary)' : 'transparent', color: catalogView === 'products' ? 'white' : 'var(--color-text-muted)', borderColor: catalogView === 'products' ? 'var(--color-primary)' : 'var(--color-border)' }}>Products</button>
+              <button onClick={() => { setCatalogView('rawMaterials'); setCatalogSearch(''); }} style={{ padding: '6px 16px', borderRadius: 'var(--radius-md)', border: '1px solid', fontSize: '0.85rem', cursor: 'pointer', fontWeight: catalogView === 'rawMaterials' ? 600 : 400, background: catalogView === 'rawMaterials' ? 'var(--color-primary)' : 'transparent', color: catalogView === 'rawMaterials' ? 'white' : 'var(--color-text-muted)', borderColor: catalogView === 'rawMaterials' ? 'var(--color-primary)' : 'var(--color-border)' }}>Rolls Godown</button>
             </div>
             {catalogView === 'products' ? renderProductsCatalog() : renderRawMaterialsCatalog()}
           </div>
@@ -1018,51 +895,7 @@ export const AdminSettings = () => {
 
         {tab === 'masters' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            <Card>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-                <h3 style={{ margin: 0 }}>GSM Values</h3>
-                {canManageCatalog && !showAddGsm && (
-                  <Button variant="primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => setShowAddGsm(true)}>+ Add</Button>
-                )}
-              </div>
-              {showAddGsm && (
-                <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
-                  <Input type="number" placeholder="GSM value (e.g. 110)" value={newGsmValue} onChange={e => setNewGsmValue(e.target.value)} style={{ flex: '1 1 100px' }} autoFocus />
-                  <Input type="text" placeholder="Label (optional)" value={newGsmLabel} onChange={e => setNewGsmLabel(e.target.value)} style={{ flex: '2 1 150px' }} />
-                  <Button variant="outline" style={{ fontSize: '0.8rem' }} onClick={() => { setShowAddGsm(false); setNewGsmValue(''); setNewGsmLabel(''); }}>Cancel</Button>
-                  <Button variant="primary" style={{ fontSize: '0.8rem' }} onClick={handleAddGsm}>Save</Button>
-                </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                {gsmList.map((g: any) => (
-                  <div key={g.id} style={{ padding: 'var(--space-3)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-sm)', opacity: g.isActive ? 1 : 0.5 }}>
-                    {editingGsmId === g.id ? (
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                        <Input type="number" value={editGsmValue} onChange={e => setEditGsmValue(e.target.value)} style={{ flex: '1 1 80px' }} autoFocus />
-                        <Input type="text" value={editGsmLabel} onChange={e => setEditGsmLabel(e.target.value)} placeholder="Label (optional)" style={{ flex: '2 1 140px' }} />
-                        <Button variant="outline" style={{ fontSize: '0.8rem' }} onClick={() => setEditingGsmId(null)}>Cancel</Button>
-                        <Button variant="primary" style={{ fontSize: '0.8rem' }} onClick={() => handleSaveGsm(g.id)}>Save</Button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <span style={{ fontWeight: 600 }}>{g.value} GSM</span>
-                          {g.label && <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginLeft: 'var(--space-2)' }}>{g.label}</span>}
-                          {!g.isActive && <span style={{ fontSize: '0.75rem', color: '#fa5252', marginLeft: 'var(--space-2)' }}>Disabled</span>}
-                        </div>
-                        {canManageCatalog && (
-                          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                            <button onClick={() => { setEditingGsmId(g.id); setEditGsmValue(String(g.value)); setEditGsmLabel(g.label || ''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', fontSize: '0.75rem', padding: '2px 4px' }}>✎</button>
-                            <button onClick={() => handleDeleteGsm(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fa5252', fontSize: '0.75rem', padding: '2px 4px' }}>✕</button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {gsmList.length === 0 && <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', margin: 0 }}>No GSM values configured yet.</p>}
-              </div>
-            </Card>
+            {/* GSM Values — managed via Rolls Godown catalog */}
 
             <Card>
               <h3 style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>Order Statuses</h3>

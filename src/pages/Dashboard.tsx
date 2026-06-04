@@ -25,9 +25,8 @@ export const Dashboard = () => {
     todayOrdersCount: 0,
     quotesCount: 0,
     billsCount: 0,
-    weightInKgToday: 0,
-    weightOutKgToday: 0,
   });
+  const [pipeline, setPipeline] = useState<any[]>([]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/v1/dashboard/stats`, {
@@ -35,6 +34,18 @@ export const Dashboard = () => {
     })
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setStats(data); })
+      .catch(() => {});
+
+    fetch(`${API_BASE_URL}/api/v1/orders`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then((orders: any[]) => {
+        const active = orders
+          .filter(o => o.statusName !== 'COMPLETED')
+          .slice(0, 5);
+        setPipeline(active);
+      })
       .catch(() => {});
   }, [token]);
 
@@ -106,16 +117,6 @@ export const Dashboard = () => {
             </div>
           </Card>
 
-          {/* Production Card 1 */}
-          <Card style={{ flex: '0 0 220px', background: 'linear-gradient(135deg, var(--color-accent) 0%, #2A3AB9 100%)', color: 'white', border: 'none' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <Factory size={14} opacity={0.9} />
-              <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, opacity: 0.9 }}>Weight In / Out</p>
-            </div>
-            <h2 style={{ margin: 0, fontSize: '1.7rem', fontWeight: 700 }}>
-              {(stats.weightInKgToday / 1000).toFixed(1)}t / {(stats.weightOutKgToday / 1000).toFixed(1)}t
-            </h2>
-          </Card>
 
         </div>
       </section>
@@ -142,15 +143,29 @@ export const Dashboard = () => {
       <section>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
           <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: 700 }}>Pipeline Overview</h3>
-          <button style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <button onClick={() => navigate('/reports')} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
             View Reports <ChevronRight size={14} />
           </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          <div style={{ textAlign: 'center', padding: 'var(--space-8)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-md)', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-            No active orders in pipeline.
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          {pipeline.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 'var(--space-8)', background: 'var(--color-surface-muted)', borderRadius: 'var(--radius-md)', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+              No active orders in pipeline.
+            </div>
+          ) : (
+            pipeline.map(o => (
+              <div key={o.id} onClick={() => navigate(`/bookings?id=${o.id}`)} className="pipeline-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3) var(--space-4)', background: 'white', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', cursor: 'pointer', transition: 'all 0.15s' }}>
+                <div>
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>#{o.orderNumber || o.id}</span>
+                  <span style={{ marginLeft: 8, fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>{o.customerName || '—'}</span>
+                </div>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-primary)', background: 'var(--color-primary-light, #fff3ef)', padding: '2px 10px', borderRadius: '12px' }}>
+                  {o.statusName}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </section>
 

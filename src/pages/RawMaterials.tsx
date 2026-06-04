@@ -6,7 +6,6 @@ import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
-import { ProductVariantPicker } from '../components/ProductVariantPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
@@ -22,7 +21,7 @@ export const RawMaterials = () => {
   const [editData, setEditData] = useState<any>({});
   const [entries, setEntries] = useState<any[]>([]);
   const [inFormData, setInFormData] = useState({
-    rawMaterialTypeVariantId: '',
+    rawMaterialTypeId: '',
     entryDate: new Date().toISOString().split('T')[0],
     gsm: '',
     rolls: '',
@@ -39,7 +38,7 @@ export const RawMaterials = () => {
   const [outRollWeights, setOutRollWeights] = useState<Record<number, string>>({});
   const [outEditRollWeights, setOutEditRollWeights] = useState<Record<number, string>>({});
   const [outFormData, setOutFormData] = useState({
-    rawMaterialTypeVariantId: '',
+    rawMaterialTypeId: '',
     entryDate: new Date().toISOString().split('T')[0],
     gsm: '',
     rolls: '',
@@ -47,7 +46,6 @@ export const RawMaterials = () => {
   });
 
   // --- Shared ---
-  const [gsmList, setGsmList] = useState<any[]>([]);
   const [rawMaterialTypes, setRawMaterialTypes] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]); // available stock for OUT (IN - OUT, by weight)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -83,24 +81,19 @@ export const RawMaterials = () => {
     }
   };
 
-  // Build the searchable type → size picker source from available inventory.
-  // optionalExtra injects a variant that may be fully consumed (used when editing an existing OUT entry).
-  const buildInventoryPicker = (extra?: { id: string; name: string; size: string; gsm: number }) => {
-    const byType: Record<string, any> = {};
-    for (const inv of inventory) {
-      const name = inv.materialTypeName || 'Raw Material';
-      if (!byType[name]) byType[name] = { id: name, name, variants: [] };
-      byType[name].variants.push({ id: inv.rawMaterialTypeVariantId, size: inv.size, gsm: inv.gsm });
-    }
-    if (extra && !inventory.some(i => i.rawMaterialTypeVariantId === extra.id)) {
-      if (!byType[extra.name]) byType[extra.name] = { id: extra.name, name: extra.name, variants: [] };
-      byType[extra.name].variants.push({ id: extra.id, size: extra.size, gsm: extra.gsm });
-    }
-    return Object.values(byType);
+  const findRmType = (typeId: string) =>
+    rawMaterialTypes.find((t: any) => String(t.id) === typeId);
+
+  const parseGsmFromName = (name: string): string => {
+    const m = name?.match(/^(\d+)/);
+    return m ? m[1] : '';
   };
 
-  const availableForVariant = (variantId: string): number | null => {
-    const line = inventory.find(i => i.rawMaterialTypeVariantId === variantId);
+  const availableForType = (typeId: string): number | null => {
+    const line = inventory.find((i: any) =>
+      (i.rawMaterialTypeId && String(i.rawMaterialTypeId) === typeId) ||
+      (i.rawMaterialTypeVariantId && String(i.rawMaterialTypeVariantId) === typeId)
+    );
     return line ? line.availableWeightKg : null;
   };
 
@@ -112,8 +105,6 @@ export const RawMaterials = () => {
     fetchEntries();
     fetch(`${API_BASE_URL}/api/v1/raw-material-types`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : []).then(setRawMaterialTypes).catch(() => {});
-    fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : []).then(setGsmList).catch(() => {});
   }, []);
 
   // Restore detail view from URL after entries load
@@ -131,13 +122,6 @@ export const RawMaterials = () => {
     }
   }, [entries, outEntries]);
 
-  const findRmVariant = (variantId: string) => {
-    for (const t of rawMaterialTypes) {
-      const v = t.variants?.find((v: any) => v.id === variantId);
-      if (v) return { type: t, variant: v };
-    }
-    return null;
-  };
 
   const handleDirectionChange = (d: string) => {
     setDirection(d as 'in' | 'out');
@@ -173,52 +157,37 @@ export const RawMaterials = () => {
     );
   };
 
-  const typePickerProducts = () =>
-    rawMaterialTypes
-      .filter((t: any) => t.isActive)
-      .map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        isActive: true,
-        variants: (t.variants || [])
-          .filter((v: any) => v.isActive)
-          .map((v: any) => ({ id: v.id, size: v.spec, gsm: v.gsm })),
-      }));
-
-  const variantDropdown = (value: string, onChange: (v: string) => void) => (
+  const typeDropdown = (value: string, onChange: (v: string) => void) => (
     <div>
-      <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Material Type (Optional)</label>
-      <ProductVariantPicker
-        productsList={typePickerProducts() as any}
+      <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Material Type</label>
+      <select
+        className="input-field"
         value={value}
-        onChange={(id) => onChange(String(id))}
-        placeholder="Search material type / size... (optional)"
-      />
-      {value && (
-        <button
-          type="button"
-          onClick={() => onChange('')}
-          style={{ marginTop: '6px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--color-text-muted)', textDecoration: 'underline', padding: 0 }}
-        >
-          Clear (manual entry)
-        </button>
-      )}
+        onChange={e => onChange(e.target.value)}
+        required
+      >
+        <option value="">Select material type...</option>
+        {rawMaterialTypes.filter((t: any) => t.isActive).map((t: any) => (
+          <option key={t.id} value={t.id}>{t.name}</option>
+        ))}
+      </select>
     </div>
   );
 
 
   // ===================== IN =====================
 
-  const handleInVariantChange = (variantId: string) => {
-    const found = variantId ? findRmVariant(variantId) : null;
-    setInFormData(prev => ({ ...prev, rawMaterialTypeVariantId: variantId, gsm: found?.variant.gsm ? String(found.variant.gsm) : prev.gsm }));
+  const handleInTypeChange = (typeId: string) => {
+    const type = typeId ? findRmType(typeId) : null;
+    const gsm = type ? parseGsmFromName(type.name) : '';
+    setInFormData(prev => ({ ...prev, rawMaterialTypeId: typeId, gsm: gsm || prev.gsm }));
   };
 
   const handleInSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (config.USE_MOCK_API) { setTab('history'); return; }
     const payload = {
-      rawMaterialTypeVariantId: inFormData.rawMaterialTypeVariantId || null,
+      rawMaterialTypeId: inFormData.rawMaterialTypeId || null,
       entryDate: inFormData.entryDate,
       gsm: parseInt(inFormData.gsm),
       noOfRolls: parseInt(inFormData.rolls),
@@ -230,7 +199,7 @@ export const RawMaterials = () => {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setInFormData({ rawMaterialTypeVariantId: '', entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', weightKg: '', notes: '' });
+        setInFormData({ rawMaterialTypeId: '', entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', weightKg: '', notes: '' });
         fetchEntries();
         setTab('history');
       } else { alert('Failed to save entry'); }
@@ -238,12 +207,12 @@ export const RawMaterials = () => {
   };
 
   const handleInStartEdit = () => {
-    setEditData({ rawMaterialTypeVariantId: selectedEntry.rawMaterialTypeVariantId || '', entryDate: selectedEntry.entryDate || '', gsm: String(selectedEntry.gsm || ''), rolls: String(selectedEntry.noOfRolls || ''), weightKg: String(selectedEntry.weightKg || ''), notes: selectedEntry.notes || '' });
+    setEditData({ rawMaterialTypeId: selectedEntry.rawMaterialTypeId || '', entryDate: selectedEntry.entryDate || '', gsm: String(selectedEntry.gsm || ''), rolls: String(selectedEntry.noOfRolls || ''), weightKg: String(selectedEntry.weightKg || ''), notes: selectedEntry.notes || '' });
     setIsEditing(true);
   };
 
   const handleInSaveEdit = async () => {
-    const payload = { rawMaterialTypeVariantId: editData.rawMaterialTypeVariantId || null, entryDate: editData.entryDate, gsm: parseInt(editData.gsm), noOfRolls: parseInt(editData.rolls), weightKg: editData.weightKg ? parseFloat(editData.weightKg) : 0, notes: editData.notes };
+    const payload = { rawMaterialTypeId: editData.rawMaterialTypeId || null, entryDate: editData.entryDate, gsm: parseInt(editData.gsm), noOfRolls: parseInt(editData.rolls), weightKg: editData.weightKg ? parseFloat(editData.weightKg) : 0, notes: editData.notes };
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/raw-materials/${selectedEntry.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
       if (res.ok) { setSelectedEntry(await res.json()); setIsEditing(false); fetchEntries(); }
@@ -270,21 +239,10 @@ export const RawMaterials = () => {
         </div>
         <form onSubmit={handleInSubmit}>
           <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-            {variantDropdown(inFormData.rawMaterialTypeVariantId, handleInVariantChange)}
+            {typeDropdown(inFormData.rawMaterialTypeId, handleInTypeChange)}
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
               <Input type="date" value={inFormData.entryDate} onChange={e => setInFormData(p => ({ ...p, entryDate: e.target.value }))} required />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-              {inFormData.gsm && findRmVariant(inFormData.rawMaterialTypeVariantId)?.variant.gsm ? (
-                <Input type="text" value={`${inFormData.gsm} GSM`} readOnly style={{ background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }} />
-              ) : (
-                <select className="input-field" value={inFormData.gsm} onChange={e => setInFormData(p => ({ ...p, gsm: e.target.value }))} required>
-                  <option value="">Select GSM...</option>
-                  {gsmList.map((g: any) => <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>)}
-                </select>
-              )}
             </div>
             <div className="grid-layout">
               <div>
@@ -342,21 +300,10 @@ export const RawMaterials = () => {
         <Card style={{ padding: 'var(--space-6)' }}>
           {isEditing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {variantDropdown(editData.rawMaterialTypeVariantId, v => { const found = v ? findRmVariant(v) : null; setEditData((p: any) => ({ ...p, rawMaterialTypeVariantId: v, gsm: found?.variant.gsm ? String(found.variant.gsm) : '' })); })}
+              {typeDropdown(editData.rawMaterialTypeId, (typeId) => { const type = typeId ? findRmType(typeId) : null; const gsm = type ? parseGsmFromName(type.name) : ''; setEditData((p: any) => ({ ...p, rawMaterialTypeId: typeId, gsm: gsm || p.gsm })); })}
               <div>
                 <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Entry Date</label>
                 <Input type="date" value={editData.entryDate} onChange={e => setEditData((p: any) => ({ ...p, entryDate: e.target.value }))} required />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
-                {editData.gsm && findRmVariant(editData.rawMaterialTypeVariantId)?.variant.gsm ? (
-                  <Input type="text" value={`${editData.gsm} GSM`} readOnly style={{ background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }} />
-                ) : (
-                  <select className="input-field" value={editData.gsm} onChange={e => setEditData((p: any) => ({ ...p, gsm: e.target.value }))} required>
-                    <option value="">Select GSM...</option>
-                    {gsmList.map((g: any) => <option key={g.id} value={String(g.value)}>{g.value} GSM{g.label ? ` — ${g.label}` : ''}</option>)}
-                  </select>
-                )}
               </div>
               <div className="grid-layout">
                 <div>
@@ -399,9 +346,11 @@ export const RawMaterials = () => {
 
   // ===================== OUT =====================
 
-  const handleOutVariantChange = (variantId: string) => {
-    const found = variantId ? findRmVariant(variantId) : null;
-    setOutFormData(prev => ({ ...prev, rawMaterialTypeVariantId: variantId, gsm: found?.variant.gsm ? String(found.variant.gsm) : prev.gsm }));
+  const handleOutTypeChange = (typeId: string) => {
+    const inv = typeId ? inventory.find((i: any) => String(i.rawMaterialTypeId) === typeId) : null;
+    const type = typeId ? findRmType(typeId) : null;
+    const gsm = inv?.gsm ?? (type ? parseGsmFromName(type.name) : '');
+    setOutFormData(prev => ({ ...prev, rawMaterialTypeId: typeId, gsm: gsm ? String(gsm) : '' }));
   };
 
   const handleOutRollCountChange = (value: string) => {
@@ -414,7 +363,7 @@ export const RawMaterials = () => {
     e.preventDefault();
     if (config.USE_MOCK_API) { setTab('history'); return; }
     const payload = {
-      rawMaterialTypeVariantId: outFormData.rawMaterialTypeVariantId || null,
+      rawMaterialTypeId: outFormData.rawMaterialTypeId || null,
       entryDate: outFormData.entryDate,
       gsm: outFormData.gsm ? parseInt(outFormData.gsm) : null,
       noOfRolls: parseInt(outFormData.rolls),
@@ -427,7 +376,7 @@ export const RawMaterials = () => {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setOutFormData({ rawMaterialTypeVariantId: '', entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', notes: '' });
+        setOutFormData({ rawMaterialTypeId: '', entryDate: new Date().toISOString().split('T')[0], gsm: '', rolls: '', notes: '' });
         setOutRollWeights({});
         fetchEntries();
         setTab('history');
@@ -440,7 +389,7 @@ export const RawMaterials = () => {
     const existing: Record<number, string> = {};
     for (let i = 1; i <= boxes; i++) existing[i] = String(selectedOutEntry.rollWeights?.[i] ?? '');
     setOutEditRollWeights(existing);
-    setOutEditData({ rawMaterialTypeVariantId: selectedOutEntry.rawMaterialTypeVariantId || '', entryDate: selectedOutEntry.entryDate || '', gsm: String(selectedOutEntry.gsm || ''), rolls: String(boxes), notes: selectedOutEntry.notes || '' });
+    setOutEditData({ rawMaterialTypeId: selectedOutEntry.rawMaterialTypeId || '', entryDate: selectedOutEntry.entryDate || '', gsm: String(selectedOutEntry.gsm || ''), rolls: String(boxes), notes: selectedOutEntry.notes || '' });
     setOutIsEditing(true);
   };
 
@@ -452,17 +401,17 @@ export const RawMaterials = () => {
 
   const handleOutSaveEdit = async () => {
     const totalOut = sumRollWeights(outEditRollWeights);
-    const invAvail = availableForVariant(outEditData.rawMaterialTypeVariantId);
+    const invAvail = availableForType(outEditData.rawMaterialTypeId);
     if (invAvail != null) {
       // inventory already deducted this entry's current weight — add it back to get the true allowance
-      const sameVariant = outEditData.rawMaterialTypeVariantId === selectedOutEntry.rawMaterialTypeVariantId;
-      const allowance = invAvail + (sameVariant ? (selectedOutEntry.weightKg || 0) : 0);
+      const sameType = outEditData.rawMaterialTypeId === selectedOutEntry.rawMaterialTypeId;
+      const allowance = invAvail + (sameType ? (selectedOutEntry.weightKg || 0) : 0);
       if (totalOut > allowance + 0.0001) {
         alert(`Only ${Math.round(allowance * 100) / 100} kg available in stock for this material. You entered ${totalOut} kg.`);
         return;
       }
     }
-    const payload = { rawMaterialTypeVariantId: outEditData.rawMaterialTypeVariantId || null, entryDate: outEditData.entryDate, gsm: outEditData.gsm ? parseInt(outEditData.gsm) : null, noOfRolls: parseInt(outEditData.rolls), weightKg: sumRollWeights(outEditRollWeights) || 0, rollWeights: toRollWeightsPayload(outEditRollWeights), notes: outEditData.notes };
+    const payload = { rawMaterialTypeId: outEditData.rawMaterialTypeId || null, entryDate: outEditData.entryDate, gsm: outEditData.gsm ? parseInt(outEditData.gsm) : null, noOfRolls: parseInt(outEditData.rolls), weightKg: sumRollWeights(outEditRollWeights) || 0, rollWeights: toRollWeightsPayload(outEditRollWeights), notes: outEditData.notes };
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/raw-material-out/${selectedOutEntry.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
       if (res.ok) { setSelectedOutEntry(await res.json()); setOutIsEditing(false); fetchEntries(); }
@@ -482,7 +431,7 @@ export const RawMaterials = () => {
 
   const renderOutAdd = () => {
     const rollCount = parseInt(outFormData.rolls) || 0;
-    const available = availableForVariant(outFormData.rawMaterialTypeVariantId);
+    const available = availableForType(outFormData.rawMaterialTypeId);
     const totalOut = sumRollWeights(outRollWeights);
     const overdrawn = available != null && totalOut > available + 0.0001;
     return (
@@ -498,12 +447,22 @@ export const RawMaterials = () => {
             {inventory.length === 0 ? (
               <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>No raw material in stock. Add a Raw Material — In entry first.</p>
             ) : (
-              <ProductVariantPicker
-                productsList={buildInventoryPicker() as any}
-                value={outFormData.rawMaterialTypeVariantId}
-                onChange={(id) => handleOutVariantChange(String(id))}
-                placeholder="Search material type / size..."
-              />
+              <select
+                className="input-field"
+                value={outFormData.rawMaterialTypeId}
+                onChange={e => handleOutTypeChange(e.target.value)}
+                required
+              >
+                <option value="">Select material type...</option>
+                {inventory.map((inv: any) => {
+                  const id = inv.rawMaterialTypeId || inv.rawMaterialTypeVariantId;
+                  return (
+                    <option key={id} value={id}>
+                      {inv.materialTypeName}{inv.size ? ` • ${inv.size}` : ''} — {inv.availableWeightKg} kg
+                    </option>
+                  );
+                })}
+              </select>
             )}
             {available != null && (
               <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
@@ -575,31 +534,29 @@ export const RawMaterials = () => {
           {outIsEditing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               {(() => {
-                const info = findRmVariant(outEditData.rawMaterialTypeVariantId);
-                const extra = outEditData.rawMaterialTypeVariantId ? {
-                  id: outEditData.rawMaterialTypeVariantId,
-                  name: info?.type?.name || selectedOutEntry.materialTypeName || 'Raw Material',
-                  size: info?.variant?.spec || '',
-                  gsm: info?.variant?.gsm || parseInt(outEditData.gsm) || 0,
-                } : undefined;
-                const inv = availableForVariant(outEditData.rawMaterialTypeVariantId);
-                const sameVariant = outEditData.rawMaterialTypeVariantId === selectedOutEntry.rawMaterialTypeVariantId;
-                const allowance = (inv ?? 0) + (sameVariant ? (selectedOutEntry.weightKg || 0) : 0);
+                const inv = availableForType(outEditData.rawMaterialTypeId);
+                const sameType = outEditData.rawMaterialTypeId === selectedOutEntry.rawMaterialTypeId;
+                const allowance = (inv ?? 0) + (sameType ? (selectedOutEntry.weightKg || 0) : 0);
                 return (
                   <div>
                     <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Material Type</label>
-                    <ProductVariantPicker
-                      productsList={buildInventoryPicker(extra) as any}
-                      value={outEditData.rawMaterialTypeVariantId}
-                      onChange={(id) => {
-                        const line = inventory.find(i => i.rawMaterialTypeVariantId === String(id));
-                        const f = !line ? findRmVariant(String(id)) : null;
-                        const g = line?.gsm ?? f?.variant.gsm;
-                        setOutEditData((p: any) => ({ ...p, rawMaterialTypeVariantId: String(id), gsm: g ? String(g) : '' }));
+                    <select
+                      className="input-field"
+                      value={outEditData.rawMaterialTypeId}
+                      onChange={e => {
+                        const typeId = e.target.value;
+                        const invLine = inventory.find((i: any) => String(i.rawMaterialTypeId) === typeId);
+                        const type = findRmType(typeId);
+                        const g = invLine?.gsm ?? (type ? parseGsmFromName(type.name) : '');
+                        setOutEditData((p: any) => ({ ...p, rawMaterialTypeId: typeId, gsm: g ? String(g) : '' }));
                       }}
-                      placeholder="Search material type / size..."
-                    />
-                    {(inv != null || sameVariant) && (
+                    >
+                      <option value="">Select material type...</option>
+                      {rawMaterialTypes.filter((t: any) => t.isActive).map((t: any) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                    {(inv != null || sameType) && (
                       <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                         Available in stock: <strong style={{ color: 'var(--color-primary)' }}>{Math.round(allowance * 100) / 100} kg</strong>
                       </p>
