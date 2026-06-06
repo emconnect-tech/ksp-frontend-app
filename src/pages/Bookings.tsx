@@ -12,7 +12,7 @@ import { useOrg } from '../contexts/OrgContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { useNavigate } from 'react-router-dom';
 import { config } from '../config';
-import { buildEnquiryMessage, buildQuotationMessage, buildStatusUpdateMessage } from '../config/messageTemplates';
+import { buildQuotationMessage, buildStatusUpdateMessage } from '../config/messageTemplates';
 import { fetchOrders, createOrderAPI, updateOrderWeightsAPI, updateOrderStatusAPI, fetchOrderByIdAPI } from '../api';
 
 // Lifecycle Phases
@@ -427,7 +427,7 @@ export const Bookings = () => {
               // Rebuild the remaining items with reduced bundle counts and only assigned weights
               const remainingItems = weightsFormData
                 .filter((item, idx) => (item.qty - untaggedCounts[idx]) > 0)
-                .map((item, idx) => {
+                .map((item, _idx) => {
                   const assignedWeights = item.weights.filter((w: any) => parseFloat(w) > 0);
                   return {
                     productVariantId: item.variantId,
@@ -855,21 +855,8 @@ export const Bookings = () => {
     }
   };
 
-  const handleShareEnquiry = () => {
-    const cust = customersList.find(c => c.id === selectedCustomer);
-    const customerName = cust ? cust.name : 'New Client';
-    const message = buildEnquiryMessage(
-      orgName,
-      customerName,
-      orderItems.map(item => ({ ...getVariantInfo(item.product), qty: item.qty, rate: item.rate })),
-    );
-    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
-    if (navigator.clipboard) navigator.clipboard.writeText(message);
-  };
-
   // Renders the list of orders based on the selected tab
   const renderList = () => {
-    const today = new Date().toISOString().split('T')[0];
     const filteredOrders = orders.filter(o =>
       tab === 'pending'
         ? o.phase !== 'Completed'

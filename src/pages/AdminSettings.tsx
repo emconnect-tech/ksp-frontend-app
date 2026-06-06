@@ -34,15 +34,6 @@ export const AdminSettings = () => {
   // Statuses state
   const [orderStatuses, setOrderStatuses] = useState<any[]>([]);
 
-  // GSM Master state
-  const [gsmList, setGsmList] = useState<any[]>([]);
-  const [newGsmValue, setNewGsmValue] = useState('');
-  const [newGsmLabel, setNewGsmLabel] = useState('');
-  const [showAddGsm, setShowAddGsm] = useState(false);
-  const [editingGsmId, setEditingGsmId] = useState<string | null>(null);
-  const [editGsmValue, setEditGsmValue] = useState('');
-  const [editGsmLabel, setEditGsmLabel] = useState('');
-
   // WhatsApp state
   const [waStatus, setWaStatus] = useState<'connected' | 'qr_pending' | 'disconnected' | 'loading'>('loading');
   const [waQr, setWaQr] = useState<string | null>(null);
@@ -66,7 +57,6 @@ export const AdminSettings = () => {
       fetchRawMaterialTypes();
     } else if (tab === 'masters') {
       fetchStatuses();
-      fetchGsmList();
     } else if (tab === 'whatsapp') {
       fetchWaStatus();
     }
@@ -104,54 +94,6 @@ export const AdminSettings = () => {
     } catch {
       setWaStatus('disconnected');
     }
-  };
-
-  // --- GSM ---
-  const fetchGsmList = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/gsm?includeInactive=true`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) setGsmList(await res.json());
-    } catch (e) {
-      console.error('Failed to fetch GSM list', e);
-    }
-  };
-
-  const handleAddGsm = async () => {
-    if (!newGsmValue.trim()) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/gsm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ value: parseInt(newGsmValue), label: newGsmLabel || null }),
-      });
-      if (res.ok) {
-        setNewGsmValue(''); setNewGsmLabel(''); setShowAddGsm(false);
-        fetchGsmList();
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleSaveGsm = async (id: string) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/gsm/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ value: parseInt(editGsmValue), label: editGsmLabel || null }),
-      });
-      if (res.ok) { setEditingGsmId(null); fetchGsmList(); }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleDeleteGsm = async (id: string) => {
-    try {
-      await fetch(`${API_BASE_URL}/api/v1/gsm/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      fetchGsmList();
-    } catch (e) { console.error(e); }
   };
 
   // --- Statuses ---

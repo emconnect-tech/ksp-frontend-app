@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Users, Package, ArrowDownLeft, Layers, Search } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
-import { Badge } from '../design-system/components/ui/Badge';
 import { Input } from '../design-system/components/ui/Input';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { useAuth } from '../contexts/AuthContext';
@@ -86,7 +85,6 @@ export const Reports = () => {
       setStockRows(rows.sort((a, b) => b.stock - a.stock));
 
       // pending tiles
-      const today = new Date().toISOString().split('T')[0];
       const statsMap: Record<string, { label: string; totalBundles: number; orderCount: number }> = {};
       orders.filter((o: any) => o.statusName !== 'COMPLETED' && o.statusName !== 'DISPATCHED')
         .forEach((o: any) => {
