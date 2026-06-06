@@ -74,7 +74,9 @@ export const Bookings = () => {
     if (config.WHATSAPP_TYPE === 'none') { setWaConnected(false); return; }
     if (config.WHATSAPP_TYPE === 'msg91') { setWaConnected(true); return; }
     try {
-      const res = await fetch(`${config.WHATSAPP_WEB_URL}/status`);
+      const orgId = user?.orgId;
+      const url = `${config.WHATSAPP_WEB_URL}/status${orgId ? `?orgId=${orgId}` : ''}`;
+      const res = await fetch(url);
       if (!res.ok) { setWaConnected(false); return; }
       const { status } = await res.json();
       setWaConnected(status === 'connected');
