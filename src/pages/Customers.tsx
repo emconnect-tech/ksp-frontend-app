@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '../design-system/components/ui/Card';
 import { Button } from '../design-system/components/ui/Button';
 import { Input } from '../design-system/components/ui/Input';
+import { Pagination } from '../design-system/components/ui/Pagination';
 import { ArrowLeft, Edit2, Search, UserPlus } from 'lucide-react';
 import { CustomerForm } from '../components/customers/CustomerForm';
 import { useAuth } from '../contexts/AuthContext';
@@ -29,6 +30,10 @@ export const Customers = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [custPage, setCustPage] = useState(0);
+  const [custTotalPages, setCustTotalPages] = useState(0);
+  const [custTotalElements, setCustTotalElements] = useState(0);
+  const CUST_PAGE_SIZE = 20;
   const [customerOrders, setCustomerOrders] = useState<any[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<{ id: string; name: string } | null>(null);
   const { token } = useAuth();
@@ -36,23 +41,23 @@ export const Customers = () => {
   const navigate = useNavigate();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
+  useEffect(() => { fetchCustomers(0); }, []);
+  useEffect(() => { fetchCustomers(custPage); }, [custPage]);
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = async (page = custPage) => {
     if (config.USE_MOCK_API) {
       setCustomers(MOCK_CUSTOMERS);
       return;
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/customers`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/customers?page=${page}&size=${CUST_PAGE_SIZE}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        // map backend structure to frontend structure
-        const mapped = data.map((c: any) => ({
+        setCustTotalPages(data.totalPages);
+        setCustTotalElements(data.totalElements);
+        const mapped = data.content.map((c: any) => ({
           id: c.id,
           name: c.name,
           phone: c.phoneNumber,
@@ -186,6 +191,7 @@ export const Customers = () => {
             </Card>
           ))}
         </div>
+        <Pagination page={custPage} totalPages={custTotalPages} totalElements={custTotalElements} size={CUST_PAGE_SIZE} onPageChange={p => setCustPage(p)} />
       </div>
     );
   }

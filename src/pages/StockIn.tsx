@@ -5,6 +5,7 @@ import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
 import { Badge } from '../design-system/components/ui/Badge';
+import { Pagination } from '../design-system/components/ui/Pagination';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
@@ -18,6 +19,10 @@ export const StockIn = () => {
   const [editData, setEditData] = useState<any>({});
 
   const [entries, setEntries] = useState<any[]>([]);
+  const [stockPage, setStockPage] = useState(0);
+  const [stockTotalPages, setStockTotalPages] = useState(0);
+  const [stockTotalElements, setStockTotalElements] = useState(0);
+  const PAGE_SIZE = 20;
   const [productsList, setProductsList] = useState<any[]>([]);
   const [gsmList, setGsmList] = useState<any[]>([]);
 
@@ -45,7 +50,7 @@ export const StockIn = () => {
     }
   };
 
-  const fetchData = async () => {
+  const fetchData = async (page = stockPage) => {
     if (config.USE_MOCK_API) {
       setEntries([
         { id: '1', entryDate: '2026-05-02T10:00:00', type: 'Green Net - Planet Agro', gsm: 110, size: '30x60', noOfBundles: 5, weightKg: 125.0, isActive: true },
@@ -56,11 +61,16 @@ export const StockIn = () => {
     }
     try {
       const [stockRes, prodRes, gsmRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/v1/stock-in`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/stock-in?page=${page}&size=${PAGE_SIZE}`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/v1/products`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
-      if (stockRes.ok) setEntries(await stockRes.json());
+      if (stockRes.ok) {
+        const data = await stockRes.json();
+        setEntries(data.content);
+        setStockTotalPages(data.totalPages);
+        setStockTotalElements(data.totalElements);
+      }
       if (prodRes.ok) setProductsList(await prodRes.json());
       if (gsmRes.ok) setGsmList(await gsmRes.json());
     } catch (e) {
@@ -68,9 +78,8 @@ export const StockIn = () => {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(0); }, []);
+  useEffect(() => { fetchData(stockPage); }, [stockPage]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -339,30 +348,45 @@ export const StockIn = () => {
   );
 
   const renderHistoryList = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+    <div>
       {entries.length === 0 && (
         <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 'var(--space-8)' }}>No stock-in entries yet.</p>
       )}
-      {entries.map((entry) => (
-        <Card
-          key={entry.id}
-          onClick={() => handleViewDetails(entry)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}
-        >
-          <div>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: '1.1rem' }}>{entry.type || getVariantLabel(entry.productVariantId)}</p>
-            <p style={{ margin: '4px 0 0', fontSize: '0.9rem' }}>
-              <strong>{entry.noOfBundles}</strong> <span style={{ color: 'var(--color-text-muted)' }}>Bundles</span>
-              {' · '}
-              <strong>{entry.weightKg} kg</strong>
-            </p>
-            <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-              {new Date(entry.entryDate).toLocaleDateString()}{entry.gsm ? ` • ${entry.gsm} GSM` : ''}{entry.size ? ` • ${entry.size}` : ''}
-            </p>
-          </div>
-          <Badge status="completed">In</Badge>
-        </Card>
-      ))}
+      {entries.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
+                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Date</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Product</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>GSM</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Size</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Bundles</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr
+                  key={entry.id}
+                  onClick={() => handleViewDetails(entry)}
+                  style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-muted)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '')}
+                >
+                  <td style={{ padding: '10px 12px' }}>{new Date(entry.entryDate).toLocaleDateString()}</td>
+                  <td style={{ padding: '10px 12px', fontWeight: 600 }}>{entry.type || getVariantLabel(entry.productVariantId)}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.gsm ?? '—'}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.size || '—'}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.noOfBundles}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.weightKg}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Pagination page={stockPage} totalPages={stockTotalPages} totalElements={stockTotalElements} size={PAGE_SIZE} onPageChange={p => setStockPage(p)} />
     </div>
   );
 

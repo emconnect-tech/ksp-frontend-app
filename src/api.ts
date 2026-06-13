@@ -9,11 +9,11 @@ const getHeaders = () => {
   };
 };
 
-export const fetchOrders = async () => {
+export const fetchOrders = async (page = 0, size = 20) => {
   if (config.USE_MOCK_API) {
-    return [];
+    return { content: [], totalPages: 0, totalElements: 0, page: 0, size };
   }
-  const response = await fetch(`${getBaseUrl()}/api/v1/orders`, {
+  const response = await fetch(`${getBaseUrl()}/api/v1/orders?page=${page}&size=${size}`, {
     headers: getHeaders()
   });
   if (!response.ok) throw new Error('Failed to fetch orders');

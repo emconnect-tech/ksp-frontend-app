@@ -6,6 +6,7 @@ import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
+import { Pagination } from '../design-system/components/ui/Pagination';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { config } from '../config';
@@ -45,6 +46,15 @@ export const RawMaterials = () => {
     notes: ''
   });
 
+  // --- Pagination ---
+  const [inPage, setInPage] = useState(0);
+  const [inTotalPages, setInTotalPages] = useState(0);
+  const [inTotalElements, setInTotalElements] = useState(0);
+  const [outPage, setOutPage] = useState(0);
+  const [outTotalPages, setOutTotalPages] = useState(0);
+  const [outTotalElements, setOutTotalElements] = useState(0);
+  const PAGE_SIZE = 20;
+
   // --- Shared ---
   const [rawMaterialTypes, setRawMaterialTypes] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]); // available stock for OUT (IN - OUT, by weight)
@@ -56,7 +66,7 @@ export const RawMaterials = () => {
   const navigate = useNavigate();
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
-  const fetchEntries = async () => {
+  const fetchEntries = async (iPage = inPage, oPage = outPage) => {
     if (config.USE_MOCK_API) {
       setEntries([
         { id: '1', entryDate: '2026-05-02', materialTypeName: 'HDPE Tape', gsm: 110, noOfRolls: 10, weightKg: 250.5, rollWeights: { 1: 25.5, 2: 26.0 } },
@@ -69,12 +79,22 @@ export const RawMaterials = () => {
     }
     try {
       const [inRes, outRes, invRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/v1/raw-materials`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_BASE_URL}/api/v1/raw-material-out`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/raw-materials?page=${iPage}&size=${PAGE_SIZE}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/raw-material-out?page=${oPage}&size=${PAGE_SIZE}`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/v1/raw-materials/inventory`, { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
-      if (inRes.ok) setEntries(await inRes.json());
-      if (outRes.ok) setOutEntries(await outRes.json());
+      if (inRes.ok) {
+        const data = await inRes.json();
+        setEntries(data.content);
+        setInTotalPages(data.totalPages);
+        setInTotalElements(data.totalElements);
+      }
+      if (outRes.ok) {
+        const data = await outRes.json();
+        setOutEntries(data.content);
+        setOutTotalPages(data.totalPages);
+        setOutTotalElements(data.totalElements);
+      }
       if (invRes.ok) setInventory(await invRes.json());
     } catch (e) {
       console.error('Failed to fetch raw materials', e);
@@ -102,10 +122,12 @@ export const RawMaterials = () => {
     const params = new URLSearchParams(window.location.search);
     const dir = params.get('dir');
     if (dir === 'out') setDirection('out');
-    fetchEntries();
+    fetchEntries(0, 0);
     fetch(`${API_BASE_URL}/api/v1/raw-material-types`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : []).then(setRawMaterialTypes).catch(() => {});
   }, []);
+
+  useEffect(() => { fetchEntries(inPage, outPage); }, [inPage, outPage]);
 
   // Restore detail view from URL after entries load
   useEffect(() => {
@@ -266,17 +288,41 @@ export const RawMaterials = () => {
   };
 
   const renderInHistory = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+    <div>
       {entries.length === 0 && <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>No incoming entries yet.</p>}
-      {entries.map((entry) => (
-        <Card key={entry.id} onClick={() => { setSelectedEntry(entry); setIsEditing(false); setView('details'); navigate(`/materials?dir=in&id=${entry.id}`, { replace: true }); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}>
-          <div>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: '1rem' }}>{entry.materialTypeName || 'Raw Material'} — {entry.noOfRolls} Rolls</p>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>{entry.entryDate} • {entry.gsm} GSM • {entry.weightKg}kg</p>
-          </div>
-          <Badge status="ongoing">In</Badge>
-        </Card>
-      ))}
+      {entries.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
+                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Date</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Material Type</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Rolls</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>GSM</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr
+                  key={entry.id}
+                  onClick={() => { setSelectedEntry(entry); setIsEditing(false); setView('details'); navigate(`/materials?dir=in&id=${entry.id}`, { replace: true }); }}
+                  style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-muted)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '')}
+                >
+                  <td style={{ padding: '10px 12px' }}>{entry.entryDate}</td>
+                  <td style={{ padding: '10px 12px', fontWeight: 600 }}>{entry.materialTypeName || 'Raw Material'}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.noOfRolls}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.gsm ?? '—'}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.weightKg}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Pagination page={inPage} totalPages={inTotalPages} totalElements={inTotalElements} size={PAGE_SIZE} onPageChange={p => setInPage(p)} />
     </div>
   );
 
@@ -500,17 +546,41 @@ export const RawMaterials = () => {
   };
 
   const renderOutHistory = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+    <div>
       {outEntries.length === 0 && <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>No outgoing entries yet.</p>}
-      {outEntries.map((entry) => (
-        <Card key={entry.id} onClick={() => { setSelectedOutEntry(entry); setOutIsEditing(false); setOutView('details'); navigate(`/materials?dir=out&id=${entry.id}`, { replace: true }); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', cursor: 'pointer' }}>
-          <div>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: '1rem' }}>{entry.materialTypeName || 'Raw Material'} — {entry.noOfRolls} Rolls</p>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>{entry.entryDate}{entry.gsm ? ` • ${entry.gsm} GSM` : ''}{entry.weightKg ? ` • ${entry.weightKg}kg` : ''}</p>
-          </div>
-          <Badge status="completed">Out</Badge>
-        </Card>
-      ))}
+      {outEntries.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
+                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Date</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Material Type</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Rolls</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>GSM</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {outEntries.map((entry) => (
+                <tr
+                  key={entry.id}
+                  onClick={() => { setSelectedOutEntry(entry); setOutIsEditing(false); setOutView('details'); navigate(`/materials?dir=out&id=${entry.id}`, { replace: true }); }}
+                  style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-muted)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '')}
+                >
+                  <td style={{ padding: '10px 12px' }}>{entry.entryDate}</td>
+                  <td style={{ padding: '10px 12px', fontWeight: 600 }}>{entry.materialTypeName || 'Raw Material'}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.noOfRolls}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.gsm ?? '—'}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>{entry.weightKg || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Pagination page={outPage} totalPages={outTotalPages} totalElements={outTotalElements} size={PAGE_SIZE} onPageChange={p => setOutPage(p)} />
     </div>
   );
 

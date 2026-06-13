@@ -5,6 +5,7 @@ import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
 import { Badge } from '../design-system/components/ui/Badge';
+import { Pagination } from '../design-system/components/ui/Pagination';
 import { CustomerForm } from '../components/customers/CustomerForm';
 import { ProductVariantPicker } from '../components/ProductVariantPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,6 +36,10 @@ export const Bookings = () => {
   const [wizardStep, setWizardStep] = useState(1);
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [orders, setOrders] = useState<any[]>([]);
+  const [ordersPage, setOrdersPage] = useState(0);
+  const [ordersTotalPages, setOrdersTotalPages] = useState(0);
+  const [ordersTotalElements, setOrdersTotalElements] = useState(0);
+  const ORDERS_PAGE_SIZE = 20;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -64,6 +69,8 @@ export const Bookings = () => {
     loadStatuses();
     checkWaStatus();
   }, []);
+
+  useEffect(() => { loadOrders(undefined, ordersPage); }, [ordersPage]);
 
   const loadAll = async () => {
     const custs = await loadMasterData();
@@ -122,10 +129,11 @@ export const Bookings = () => {
     }
     try {
       const [custRes, prodRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/v1/customers`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/customers?page=0&size=10000`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/v1/products?includeInactive=true`, { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
-      const custs = custRes.ok ? await custRes.json() : [];
+      const custsRaw = custRes.ok ? await custRes.json() : [];
+      const custs: any[] = Array.isArray(custsRaw) ? custsRaw : (custsRaw.content ?? []);
       if (custRes.ok) setCustomersList(custs);
       if (prodRes.ok) setProductsList(await prodRes.json());
       return custs;
@@ -158,11 +166,13 @@ export const Bookings = () => {
     }
   };
 
-  const loadOrders = async (custs?: any[]) => {
+  const loadOrders = async (custs?: any[], page = ordersPage) => {
     try {
-      const data = await fetchOrders();
+      const result = await fetchOrders(page, ORDERS_PAGE_SIZE);
+      setOrdersTotalPages(result.totalPages);
+      setOrdersTotalElements(result.totalElements);
       const resolvedCustomers = custs ?? customersList;
-      const formatted = data.map((o: any) => {
+      const formatted = result.content.map((o: any) => {
         const { phase, action } = mapPhase(o.statusName, o.totalWeightKg);
         const cust = resolvedCustomers.find((c: any) => String(c.id) === String(o.customerId));
         return {
@@ -924,6 +934,7 @@ export const Bookings = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         {renderPendingStats()}
+
         {filteredOrders.length > 0 ? filteredOrders.map((order) => (
           <Card 
             key={order.id} 
@@ -978,6 +989,7 @@ export const Bookings = () => {
             No {tab} orders found.
           </div>
         )}
+        <Pagination page={ordersPage} totalPages={ordersTotalPages} totalElements={ordersTotalElements} size={ORDERS_PAGE_SIZE} onPageChange={p => setOrdersPage(p)} />
       </div>
     );
   };
