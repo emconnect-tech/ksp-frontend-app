@@ -25,6 +25,7 @@ export const StockIn = () => {
   const PAGE_SIZE = 20;
   const [productsList, setProductsList] = useState<any[]>([]);
   const [gsmList, setGsmList] = useState<any[]>([]);
+  const [rawMaterialTypes, setRawMaterialTypes] = useState<any[]>([]);
 
   const { token } = useAuth();
   const { canDelete, canEdit } = usePermissions();
@@ -60,10 +61,11 @@ export const StockIn = () => {
       return;
     }
     try {
-      const [stockRes, prodRes, gsmRes] = await Promise.all([
+      const [stockRes, prodRes, gsmRes, rmTypesRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/v1/stock-in?page=${page}&size=${PAGE_SIZE}`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/v1/products`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/v1/gsm`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/v1/raw-material-types`, { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
       if (stockRes.ok) {
         const data = await stockRes.json();
@@ -73,6 +75,7 @@ export const StockIn = () => {
       }
       if (prodRes.ok) setProductsList(await prodRes.json());
       if (gsmRes.ok) setGsmList(await gsmRes.json());
+      if (rmTypesRes.ok) setRawMaterialTypes(await rmTypesRes.json());
     } catch (e) {
       console.error('Failed to fetch data', e);
     }
@@ -109,6 +112,7 @@ export const StockIn = () => {
     }
     setEditData({
       productVariantId: variantId,
+      rawMaterialTypeId: selectedEntry.rawMaterialTypeId || '',
       entryDate: selectedEntry.entryDate ? selectedEntry.entryDate.substring(0, 19) : '',
       gsm,
       size,
@@ -123,6 +127,7 @@ export const StockIn = () => {
     try {
       const payload = {
         productVariantId: editData.productVariantId,
+        rawMaterialTypeId: editData.rawMaterialTypeId || null,
         entryDate: editData.entryDate,
         gsm: editData.gsm ? parseInt(editData.gsm) : null,
         size: editData.size,
@@ -151,6 +156,7 @@ export const StockIn = () => {
 
   const [formData, setFormData] = useState({
     productVariantId: '',
+    rawMaterialTypeId: '',
     entryDate: new Date().toISOString().split('T')[0] + 'T00:00:00',
     gsm: '',
     size: '',
@@ -224,6 +230,7 @@ export const StockIn = () => {
 
     const payload: any = {
       productVariantId: formData.productVariantId,
+      rawMaterialTypeId: formData.rawMaterialTypeId || null,
       entryDate: formData.entryDate,
       gsm: formData.gsm ? parseInt(formData.gsm) : null,
       size: formData.size,
@@ -247,6 +254,7 @@ export const StockIn = () => {
       if (res.ok) {
         setFormData({
           productVariantId: '',
+          rawMaterialTypeId: '',
           entryDate: new Date().toISOString().split('T')[0] + 'T00:00:00',
           gsm: '', size: '', bundles: '', weightKg: '', notes: ''
         });
@@ -278,6 +286,15 @@ export const StockIn = () => {
               onChange={(id) => handleVariantChange(String(id))}
               placeholder="Select Product Variant..."
             />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Raw Material</label>
+            <select className="input-field" value={formData.rawMaterialTypeId} onChange={e => setFormData(f => ({ ...f, rawMaterialTypeId: e.target.value }))}>
+              <option value="">Select Raw Material...</option>
+              {rawMaterialTypes.filter((t: any) => t.isActive !== false).map((t: any) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
           </div>
           <div className="grid-layout">
             <div>
@@ -424,6 +441,15 @@ export const StockIn = () => {
                   placeholder="Select Product Variant..."
                 />
               </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Raw Material</label>
+                <select className="input-field" value={editData.rawMaterialTypeId} onChange={e => setEditData((d: any) => ({ ...d, rawMaterialTypeId: e.target.value }))}>
+                  <option value="">Select Raw Material...</option>
+                  {rawMaterialTypes.filter((t: any) => t.isActive !== false).map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid-layout">
                 <div>
                   <label style={{ display: 'block', marginBottom: 'var(--space-2)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>GSM</label>
@@ -472,6 +498,12 @@ export const StockIn = () => {
                 <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Product / Stock Type</label>
                 <div style={{ fontWeight: 600, fontSize: '1.2rem' }}>{selectedEntry.type || getVariantLabel(selectedEntry.productVariantId)}</div>
               </div>
+              {selectedEntry.rawMaterialTypeName && (
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Raw Material</label>
+                  <div style={{ fontWeight: 600 }}>{selectedEntry.rawMaterialTypeName}</div>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
                 <div>
                   <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Date</label>

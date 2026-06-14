@@ -3,6 +3,7 @@ import { Users, Package, ArrowDownLeft, Layers, Search } from 'lucide-react';
 import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
+import { DateRangePicker } from '../components/DateRangePicker';
 import { useAuth } from '../contexts/AuthContext';
 
 /* ───────────────────── tiny helpers ───────────────────── */
@@ -19,6 +20,14 @@ export const Reports = () => {
   const [expandedRmRow, setExpandedRmRow] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
+  // date-range report
+  const today = new Date().toISOString().split('T')[0];
+  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+  const [rangeStart, setRangeStart] = useState(firstOfMonth);
+  const [rangeEnd, setRangeEnd] = useState(today);
+  const [rangeRows, setRangeRows] = useState<any[]>([]);
+  const [rangeLoading, setRangeLoading] = useState(false);
+
   // overview
   const [stats, setStats] = useState<{ totalCustomers: number; todayOrdersCount: number } | null>(null);
   const [pendingTiles, setPendingTiles] = useState<Array<{ label: string; totalBundles: number; orderCount: number }>>([]);
@@ -27,7 +36,7 @@ export const Reports = () => {
   const [stockRows, setStockRows] = useState<any[]>([]);
 
   // raw materials tab
-  const [rmInOut, setRmInOut] = useState<Array<{ name: string; inKg: number; outKg: number; netKg: number; productionKg: number }>>([]);
+  const [rmInOut, setRmInOut] = useState<Array<{ name: string; inKg: number; outKg: number; netKg: number; returnedKg: number; returnedBundles: number; productionKg: number }>>([]);
   const [rmInventory, setRmInventory] = useState<Record<string, { availableKg: number; rolls: number; variants: Array<{ size: string; availableKg: number; rolls: number }> }>>({});
 
   const loadData = () => {
@@ -37,8 +46,8 @@ export const Reports = () => {
 
     // ── Products & stock ──
     Promise.all([
-      fetch(`${API_BASE_URL}/api/v1/stock-in`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/orders`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/stock-in/all`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/orders?page=0&size=1000`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : { content: [] }).then(d => Array.isArray(d) ? d : (d.content || [])),
       fetch(`${API_BASE_URL}/api/v1/products?includeInactive=true`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
     ]).then(([stockEntries, orders, products]) => {
       const totalStockByVariant: Record<string, number> = {};
@@ -101,38 +110,23 @@ export const Reports = () => {
       setPendingTiles(Object.values(statsMap).filter(s => s.totalBundles > 0));
     }).catch(() => {});
 
-    // ── Raw materials + production pending ──
+    // ── Raw materials + production (all-time via dedicated report endpoint) ──
     Promise.all([
-      fetch(`${API_BASE_URL}/api/v1/raw-materials`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/raw-material-out`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/reports/production-summary`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
       fetch(`${API_BASE_URL}/api/v1/raw-materials/inventory`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/stock-in`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
-    ]).then(([inEntries, outEntries, inventory, stockInEntries]) => {
-      const byType: Record<string, { inKg: number; outKg: number }> = {};
-      const typeName = (e: any) => e.materialTypeName || (e.gsm ? `${e.gsm} GSM` : 'Unlabelled');
-      inEntries.forEach((e: any) => { const n = typeName(e); if (!byType[n]) byType[n] = { inKg: 0, outKg: 0 }; byType[n].inKg += e.weightKg || 0; });
-      outEntries.forEach((e: any) => { const n = typeName(e); if (!byType[n]) byType[n] = { inKg: 0, outKg: 0 }; byType[n].outKg += e.weightKg || 0; });
+    ]).then(([summaryRows, inventory]) => {
+      setRmInOut((summaryRows as any[]).map(r => ({
+        name: r.name,
+        inKg: r.rawMaterialInKg,
+        outKg: r.sentToProductionKg,
+        netKg: r.netStockKg,
+        returnedKg: r.returnedKg,
+        returnedBundles: r.returnedBundles,
+        productionKg: r.pendingKg,
+      })));
 
-      // map gsm -> material type name from out entries (for linking stock-in back to type)
-      const gsmToType: Record<number, string> = {};
-      outEntries.forEach((e: any) => { if (e.gsm) gsmToType[e.gsm] = typeName(e); });
-      const stockInByType: Record<string, number> = {};
-      stockInEntries.forEach((e: any) => {
-        const typeName = gsmToType[e.gsm];
-        if (typeName) stockInByType[typeName] = (stockInByType[typeName] || 0) + (e.weightKg || 0);
-      });
-
-      setRmInOut(Object.entries(byType).map(([name, v]) => ({
-        name,
-        inKg: +fmt(v.inKg),
-        outKg: +fmt(v.outKg),
-        netKg: +fmt(v.inKg - v.outKg),
-        productionKg: +fmt(v.outKg - (stockInByType[name] || 0)),
-      })).sort((a, b) => b.inKg - a.inKg));
-
-      // inventory grouped by type, with variant drill-down
       const inv: Record<string, { availableKg: number; rolls: number; variants: any[] }> = {};
-      inventory.forEach((i: any) => {
+      (inventory as any[]).forEach(i => {
         const n = i.materialTypeName || (i.gsm ? `${i.gsm} GSM` : 'Unlabelled');
         if (!inv[n]) inv[n] = { availableKg: 0, rolls: 0, variants: [] };
         inv[n].availableKg += i.availableWeightKg || 0;
@@ -147,11 +141,29 @@ export const Reports = () => {
     setLastUpdated(new Date());
   };
 
+  const loadRangeReport = async () => {
+    if (!rangeStart || !rangeEnd) return;
+    setRangeLoading(true);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/v1/reports/production-summary?startDate=${rangeStart}&endDate=${rangeEnd}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      if (res.ok) setRangeRows(await res.json());
+    } catch (e) {
+      console.error('Failed to load range report', e);
+    } finally {
+      setRangeLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, [token]);
+
+  useEffect(() => { loadRangeReport(); }, [token]);
 
   // ── Filtered rows ──
   const filteredStock = stockRows.filter(r =>
@@ -231,6 +243,52 @@ export const Reports = () => {
                         <td style={{ ...tdStyle, fontSize: '0.9rem' }}>Total</td>
                         <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-primary)', fontSize: '1rem' }}>{pendingTiles.reduce((s, t) => s + t.totalBundles, 0)}</td>
                         <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {rmInOut.some(r => r.productionKg > 0) && (
+              <section style={{ marginBottom: 'var(--space-5)' }}>
+                <p style={{ margin: '0 0 var(--space-2)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Pending in Production
+                  <span style={{ marginLeft: '8px', fontWeight: 400, color: '#f08c00' }}>
+                    {fmt(rmInOut.reduce((s, r) => s + Math.max(0, r.productionKg), 0))} kg outstanding
+                  </span>
+                </p>
+                <div style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)' }}>
+                        <th style={thStyle}>Raw Material</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Sent (kg)</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Returned (kg)</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Returned (bun)</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Pending (kg)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rmInOut.filter(r => r.outKg > 0 || r.returnedKg > 0).map((row, i, arr) => (
+                        <tr key={i} style={{ borderBottom: i < arr.length - 1 ? '1px solid var(--color-border)' : 'none', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
+                          <td style={tdStyle}><strong>{row.name}</strong></td>
+                          <td style={{ ...tdStyle, textAlign: 'right', color: '#fa5252', fontWeight: 600 }}>{row.outKg}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44', fontWeight: 600 }}>{row.returnedKg || '—'}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-text-muted)' }}>{row.returnedBundles || '—'}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: row.productionKg > 0 ? '#f08c00' : '#2f9e44' }}>
+                            {row.productionKg > 0 ? row.productionKg : '✓ Done'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: '2px solid var(--color-border)', background: 'var(--color-surface-muted)', fontWeight: 700 }}>
+                        <td style={tdStyle}>Total</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: '#fa5252' }}>{fmt(rmInOut.reduce((s, r) => s + r.outKg, 0))}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44' }}>{fmt(rmInOut.reduce((s, r) => s + r.returnedKg, 0))}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-text-muted)' }}>{rmInOut.reduce((s, r) => s + r.returnedBundles, 0)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: '#f08c00' }}>{fmt(rmInOut.reduce((s, r) => s + Math.max(0, r.productionKg), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -351,9 +409,72 @@ export const Reports = () => {
               />
             </div>
 
+            {/* ── DATE RANGE REPORT ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+              <DateRangePicker
+                start={rangeStart}
+                end={rangeEnd}
+                onChange={(s, e) => { setRangeStart(s); setRangeEnd(e); }}
+              />
+              <button
+                onClick={loadRangeReport}
+                disabled={rangeLoading}
+                style={{ padding: '7px 18px', fontSize: '0.85rem', background: 'var(--color-primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 600 }}
+              >
+                {rangeLoading ? 'Loading…' : 'Apply'}
+              </button>
+            </div>
+
+            {rangeRows.length > 0 && (
+              <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', marginBottom: 'var(--space-6)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)' }}>
+                      <th style={thStyle}>Raw Material</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>RM In (kg)</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Net Stock (kg)</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Returned</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>In Production (kg)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rangeRows.map((row: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--color-border)', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
+                        <td style={tdStyle}><strong>{row.name}</strong></td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44', fontWeight: 700 }}>{row.rawMaterialInKg || '—'}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: row.netStockKg < 0 ? '#fa5252' : 'var(--color-primary)' }}>{row.netStockKg}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44', fontWeight: 600 }}>
+                          {row.returnedKg > 0 ? <>{row.returnedKg} <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', fontSize: '0.78rem' }}>({row.returnedBundles} bun)</span></> : '—'}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: row.pendingKg > 0 ? '#f08c00' : '#2f9e44' }}>
+                          {row.pendingKg > 0 ? row.pendingKg : '✓'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'var(--color-surface-muted)', borderTop: '2px solid var(--color-border)', fontWeight: 700 }}>
+                      <td style={tdStyle}>Total ({rangeRows.length})</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44' }}>{fmt(rangeRows.reduce((s: number, r: any) => s + r.rawMaterialInKg, 0))}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-primary)' }}>{fmt(rangeRows.reduce((s: number, r: any) => s + r.netStockKg, 0))}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44' }}>
+                        {fmt(rangeRows.reduce((s: number, r: any) => s + r.returnedKg, 0))} <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', fontSize: '0.78rem' }}>({rangeRows.reduce((s: number, r: any) => s + r.returnedBundles, 0)} bun)</span>
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#f08c00' }}>{fmt(rangeRows.reduce((s: number, r: any) => s + Math.max(0, r.pendingKg), 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+            {rangeRows.length === 0 && !rangeLoading && (
+              <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 'var(--space-4)', fontSize: '0.85rem', marginBottom: 'var(--space-4)' }}>
+                No data for the selected date range.
+              </p>
+            )}
+
             {/* IN vs OUT table */}
             <p style={{ margin: '0 0 var(--space-2)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <ArrowDownLeft size={13} /> In vs Out
+              <ArrowDownLeft size={13} /> In vs Out (All Time)
             </p>
             {filteredRmInOut.length === 0 ? (
               <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 'var(--space-6)', fontSize: '0.9rem' }}>No raw material entries yet.</p>
@@ -364,10 +485,9 @@ export const Reports = () => {
                     <tr style={{ background: 'var(--color-surface-muted)', borderBottom: '1px solid var(--color-border)' }}>
                       <th style={thStyle}>Material Type</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>In (kg)</th>
-                      <th style={{ ...thStyle, textAlign: 'right' }}>Out (kg)</th>
-                      <th style={{ ...thStyle, textAlign: 'right' }}>Net (kg)</th>
-                      <th style={{ ...thStyle, textAlign: 'right' }}>% Used</th>
-                      <th style={{ ...thStyle, textAlign: 'right' }}>Production (kg)</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Net Stock (kg)</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Returned</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>In Production (kg)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -375,9 +495,10 @@ export const Reports = () => {
                       <tr key={i} style={{ borderBottom: '1px solid var(--color-border)', background: i % 2 === 0 ? 'white' : 'var(--color-surface-muted)' }}>
                         <td style={tdStyle}><strong>{row.name}</strong></td>
                         <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44', fontWeight: 700 }}>{row.inKg}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', color: '#fa5252', fontWeight: 600 }}>{row.outKg}</td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: row.netKg < 0 ? '#fa5252' : 'var(--color-primary)' }}>{row.netKg}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-text-muted)' }}>{pct(row.outKg, row.inKg)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44', fontWeight: 600 }}>
+                          {row.returnedKg > 0 ? <>{row.returnedKg} <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', fontSize: '0.78rem' }}>({row.returnedBundles} bun)</span></> : '—'}
+                        </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: row.productionKg > 0 ? '#f08c00' : '#2f9e44' }}>
                           {row.productionKg > 0 ? row.productionKg : '✓'}
                         </td>
@@ -388,10 +509,11 @@ export const Reports = () => {
                     <tr style={{ background: 'var(--color-surface-muted)', borderTop: '2px solid var(--color-border)', fontWeight: 700 }}>
                       <td style={tdStyle}>Total ({filteredRmInOut.length})</td>
                       <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44' }}>{fmt(filteredRmInOut.reduce((s, r) => s + r.inKg, 0))}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: '#fa5252' }}>{fmt(filteredRmInOut.reduce((s, r) => s + r.outKg, 0))}</td>
                       <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-primary)' }}>{fmt(filteredRmInOut.reduce((s, r) => s + r.netKg, 0))}</td>
-                      <td />
-                      <td style={{ ...tdStyle, textAlign: 'right', color: '#f08c00' }}>{fmt(filteredRmInOut.reduce((s, r) => s + r.productionKg, 0))}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#2f9e44' }}>
+                        {fmt(filteredRmInOut.reduce((s, r) => s + r.returnedKg, 0))} <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', fontSize: '0.78rem' }}>({filteredRmInOut.reduce((s, r) => s + r.returnedBundles, 0)} bun)</span>
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#f08c00' }}>{fmt(filteredRmInOut.reduce((s, r) => s + Math.max(0, r.productionKg), 0))}</td>
                     </tr>
                   </tfoot>
                 </table>

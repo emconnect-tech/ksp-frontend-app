@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../design-system/components/ui/Button';
 import { Card } from '../design-system/components/ui/Card';
@@ -13,6 +13,7 @@ export const Login = () => {
   const [otp, setOtp] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const navigate = useNavigate();
   const { login } = useAuth();
   const { theme } = useOrg();
@@ -75,12 +76,12 @@ export const Login = () => {
       setLoading(true);
 
       if (config.USE_MOCK_API) {
-        setTimeout(() => {
+        setTimeout(async () => {
           if (otp === '1234') {
             // A valid JWT format with dummy payload to pass `atob` parsing in AuthContext
             const mockJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtb2NrLXVzZXIiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzdGF0dXMiOiJBQ1RJVkUiLCJwaG9uZSI6Iis5MTk5OTk5OTk5OTkiLCJvcmdJZCI6Im9yZy0xIn0=.signature';
-            login(mockJwt);
-            navigate('/');
+            await login(mockJwt);
+            navigate('/', { replace: true });
           } else {
             alert('Invalid Mock OTP. Use 1234.');
             setLoading(false);
@@ -97,8 +98,8 @@ export const Login = () => {
         });
         if (response.ok) {
           const data = await response.json();
-          login(data.accessToken);
-          navigate('/');
+          await login(data.accessToken);
+          navigate('/', { replace: true });
         } else {
           alert('Invalid OTP');
         }
@@ -109,6 +110,45 @@ export const Login = () => {
       }
     }
   };
+
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startCooldown = () => {
+    setResendCooldown(30);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown(prev => {
+        if (prev <= 1) { clearInterval(cooldownRef.current!); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || loading) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: `+91${phone}` })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSessionId(data.sessionId);
+        setOtp('');
+        startCooldown();
+      } else {
+        alert('Failed to resend OTP');
+      }
+    } catch {
+      alert('Error connecting to server');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { if (step === 'otp') startCooldown(); }, [step]);
+  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
 
   return (
     <div style={{
@@ -204,6 +244,17 @@ export const Login = () => {
               <Button variant="primary" style={{ width: '100%', padding: 'var(--space-4)' }} disabled={loading}>
                 {loading ? 'Verifying...' : 'Verify & Login'}
               </Button>
+              <div style={{ textAlign: 'center', marginTop: 'var(--space-4)', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                Didn't receive it?{' '}
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={resendCooldown > 0 || loading}
+                  style={{ background: 'none', border: 'none', cursor: resendCooldown > 0 ? 'default' : 'pointer', padding: 0, fontWeight: 600, color: resendCooldown > 0 ? 'var(--color-text-muted)' : 'var(--color-primary)' }}
+                >
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend OTP'}
+                </button>
+              </div>
             </form>
           )}
         </Card>

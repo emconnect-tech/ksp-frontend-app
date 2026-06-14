@@ -390,7 +390,6 @@ export const AdminSettings = () => {
                   onChange={(e) => updateRole(user.id, e.target.value)}
                   style={{ background: 'none', border: 'none', fontWeight: 600, color: 'var(--color-primary)', cursor: 'pointer', padding: '2px 4px', borderRadius: '4px', outline: 'none', fontSize: '0.85rem' }}
                 >
-                  <option value="SUPER_ADMIN">Superadmin</option>
                   <option value="ADMIN">Admin</option>
                   <option value="PRODUCTION">Production</option>
                   <option value="STAFF">Staff</option>
@@ -510,13 +509,7 @@ export const AdminSettings = () => {
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>GSM</div>
-                      <select className="input-field" value={editVariantData.gsm} onChange={e => setEditVariantData(d => ({ ...d, gsm: e.target.value }))} style={{ width: '100%', fontSize: '0.85rem' }} autoFocus>
-                        <option value="">Select GSM</option>
-                        {rawMaterialTypes.filter((t: any) => t.isActive).map((t: any) => {
-                          const gsmVal = t.name?.match(/^(\d+)/)?.[1];
-                          return gsmVal ? <option key={t.id} value={gsmVal}>{t.name}</option> : null;
-                        })}
-                      </select>
+                      <Input type="number" placeholder="e.g. 110" value={editVariantData.gsm} onChange={e => setEditVariantData(d => ({ ...d, gsm: e.target.value }))} style={{ width: '100%' }} autoFocus />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>Size</div>
@@ -561,13 +554,7 @@ export const AdminSettings = () => {
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>GSM</div>
-                    <select className="input-field" value={newVariantGsm} onChange={e => setNewVariantGsm(e.target.value)} style={{ width: '100%', fontSize: '0.85rem' }}>
-                      <option value="">Select GSM</option>
-                      {rawMaterialTypes.filter((t: any) => t.isActive).map((t: any) => {
-                        const gsmVal = t.name?.match(/^(\d+)/)?.[1];
-                        return gsmVal ? <option key={t.id} value={gsmVal}>{t.name}</option> : null;
-                      })}
-                    </select>
+                    <Input type="number" placeholder="e.g. 110" value={newVariantGsm} onChange={e => setNewVariantGsm(e.target.value)} style={{ width: '100%' }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: 2 }}>Size *</div>

@@ -13,7 +13,7 @@ import { useOrg } from '../contexts/OrgContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { useNavigate } from 'react-router-dom';
 import { config } from '../config';
-import { buildQuotationMessage, buildStatusUpdateMessage } from '../config/messageTemplates';
+import { buildStatusUpdateMessage } from '../config/messageTemplates';
 import { fetchOrders, createOrderAPI, updateOrderWeightsAPI, updateOrderStatusAPI, fetchOrderByIdAPI } from '../api';
 
 // Lifecycle Phases
@@ -393,7 +393,7 @@ export const Bookings = () => {
       setOrders(prev => prev.map(o => o.id !== activeOrderId ? o : { ...o, ...updatedOrder }));
       if (selectedOrder?.id === activeOrderId) setSelectedOrder((prev: any) => ({ ...prev, ...updatedOrder }));
 
-      // Backorder for untagged bundles — only if one doesn't already exist for this order
+      // Prompt once, then auto-create one backorder for all untagged bundles (no WhatsApp)
       const backorderTag = `Backorder from #${orderToUpdate.orderNumber || activeOrderId}`;
       const backorderAlreadyExists = orders.some(o => o.id !== activeOrderId && o.notes?.includes(backorderTag));
       if (hasUntagged && !backorderAlreadyExists) {
@@ -402,83 +402,33 @@ export const Bookings = () => {
           .map((item, idx) => ({ variantId: item.variantId, qty: untaggedCounts[idx], price: item.price || 0 }))
           .filter(i => i.qty > 0);
         setDialogState({
-          title: 'Untagged Bundles',
-          message: `${total} bundle(s) have no weight assigned. Create a pending backorder for the untagged bundles?`,
+          title: 'Untagged Bundles → Backorder',
+          message: `${total} bundle(s) have no weight assigned. They will be moved to a new backorder order. The current order will still show them as pending.`,
           onConfirm: async () => {
-            const backorderPayload = {
-              customerId: orderToUpdate.customerId,
-              notes: `Backorder from #${orderToUpdate.orderNumber || activeOrderId}`,
-              items: backorderItems.map(i => ({ productVariantId: i.variantId, noOfBundles: i.qty, unitRate: i.price, lineTotal: 0 }))
-            };
-            const resp = await createOrderAPI(backorderPayload);
-            const newOrder = {
-              id: resp.id, orderNumber: resp.orderNumber, customerId: orderToUpdate.customerId,
-              customer: orderToUpdate.customer, items: backorderItems.reduce((s, i) => s + i.qty, 0),
-              totalWeight: 'Pending', amount: '0', phase: 'Order Created', action: 'Add Weights',
-              notes: backorderTag,
-              date: new Date().toISOString().split('T')[0],
-              itemsList: backorderItems.map(i => ({ variantId: i.variantId, name: i.variantId, qty: i.qty, weights: Array(i.qty).fill(''), price: i.price }))
-            };
-            setOrders(prev => [newOrder, ...prev]);
-
-            // Remove untagged bundles from the current order:
-            // — items fully untagged → delete from current order
-            // — items partially untagged → reduce noOfBundles to assigned count only
-            const itemsToDelete = weightsFormData.filter((item, idx) => untaggedCounts[idx] > 0 && (item.qty - untaggedCounts[idx]) <= 0);
-            const itemsToUpdate = weightsFormData.filter((item, idx) => untaggedCounts[idx] > 0 && (item.qty - untaggedCounts[idx]) > 0);
-
-            for (const item of itemsToDelete) {
-              if (item.id) {
-                await fetch(`${API_BASE_URL}/api/v1/orders/${activeOrderId}/items/${item.id}`, {
-                  method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
-                });
-              }
-            }
-
-            if (itemsToUpdate.length > 0 || itemsToDelete.length > 0) {
-              // Rebuild the remaining items with reduced bundle counts and only assigned weights
-              const remainingItems = weightsFormData
-                .filter((item, idx) => (item.qty - untaggedCounts[idx]) > 0)
-                .map((item, _idx) => {
-                  const assignedWeights = item.weights.filter((w: any) => parseFloat(w) > 0);
-                  return {
-                    productVariantId: item.variantId,
-                    noOfBundles: item.qty - untaggedCounts[weightsFormData.indexOf(item)],
-                    weightKg: assignedWeights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0),
-                    bundleWeights: assignedWeights.join(','),
-                    unitRate: item.price || 0,
-                  };
-                });
-
-              if (remainingItems.length > 0) {
-                await updateOrderWeightsAPI(String(activeOrderId), {
-                  customerId: orderToUpdate.customerId,
-                  items: remainingItems,
-                });
-              }
-
-              // Refresh the current order in state
-              const refreshed = await fetch(`${API_BASE_URL}/api/v1/orders/${activeOrderId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            try {
+              const resp = await createOrderAPI({
+                customerId: orderToUpdate.customerId,
+                notes: backorderTag,
+                items: backorderItems.map(i => ({ productVariantId: i.variantId, noOfBundles: i.qty, unitRate: i.price, lineTotal: 0 }))
               });
-              if (refreshed.ok) {
-                const full = await refreshed.json();
-                const newItems = (full.items || []).map((i: any) => ({
-                  id: i.id, variantId: i.productVariantId, name: String(i.productVariantId),
-                  qty: i.noOfBundles ?? 1,
-                  weights: i.bundleWeights ? i.bundleWeights.split(',').map(Number) : [],
-                  price: i.unitRate || 0,
-                }));
-                const patch = {
-                  ...orderToUpdate,
-                  items: newItems.length,
-                  itemsList: newItems,
-                  totalWeight: full.totalWeightKg ? `${full.totalWeightKg} kg` : 'Pending',
-                  amount: `${(full.totalAmount || 0).toLocaleString()}`,
-                };
-                setSelectedOrder(patch);
-                setOrders(prev => prev.map(o => o.id === activeOrderId ? patch : o));
-              }
+              setOrders(prev => [{
+                id: resp.id,
+                orderNumber: resp.orderNumber,
+                customerId: orderToUpdate.customerId,
+                customer: orderToUpdate.customer,
+                customerPhone: orderToUpdate.customerPhone || null,
+                customerPlace: orderToUpdate.customerPlace || null,
+                items: backorderItems.reduce((s, i) => s + i.qty, 0),
+                totalWeight: 'Pending',
+                amount: '0',
+                phase: 'Order Created',
+                action: 'Add Weights',
+                notes: backorderTag,
+                date: new Date().toISOString().split('T')[0],
+                itemsList: backorderItems.map(i => ({ variantId: i.variantId, name: i.variantId, qty: i.qty, weights: Array(i.qty).fill(''), price: i.price }))
+              }, ...prev]);
+            } catch (backorderErr) {
+              console.error('Failed to create backorder', backorderErr);
             }
           }
         });
@@ -560,6 +510,14 @@ export const Bookings = () => {
       };
       setSelectedOrder(updated);
       setOrders(prev => prev.map(o => o.id === selectedOrder.id ? updated : o));
+      try {
+        await fetch(`${API_BASE_URL}/api/v1/orders/${selectedOrder.id}/notify`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+      } catch (notifyErr) {
+        console.error('WhatsApp notify failed', notifyErr);
+      }
     } catch (e) {
       console.error('Failed to save prices', e);
       setDialogState({ title: 'Error', message: 'Failed to save prices.' });
@@ -773,29 +731,6 @@ export const Bookings = () => {
       console.error(e);
       setDialogState({ title: 'Error', message: 'Failed to update order status.' });
     }
-  };
-
-  const handleShareQuotation = async (order: any) => {
-    if (config.WHATSAPP_TYPE !== 'none') {
-      try {
-        await fetch(`${API_BASE_URL}/api/v1/orders/${order.id}/notify`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-      } catch (e) {
-        console.error('Failed to send WhatsApp quotation', e);
-      }
-      return;
-    }
-    // Fallback: open WhatsApp Web when no provider configured
-    const message = buildQuotationMessage(orgName, {
-      ...order,
-      itemsList: order.itemsList.map((item: any) => ({ ...item, ...getVariantInfo(item.variantId) })),
-    });
-
-    const encoded = encodeURIComponent(message);
-    window.open(`https://wa.me/?text=${encoded}`, '_blank');
-    if (navigator.clipboard) navigator.clipboard.writeText(message);
   };
 
   const [orderItems, setOrderItems] = useState([
@@ -1017,6 +952,12 @@ export const Bookings = () => {
       const isFuture  = effectiveIdx > currentIdx;
       const isEditable = !isFuture && selectedOrder.phase !== 'Dispatched' && selectedOrder.phase !== 'Completed';
 
+      // True when a backorder was spawned from this order
+      const hasBackorder = orders.some(o =>
+        o.id !== selectedOrder.id &&
+        o.notes?.includes(`Backorder from #${selectedOrder.orderNumber}`)
+      );
+
       const phaseAttachTypes = PHASE_ATTACHMENT_TYPES[phase.phase] || [];
       const phaseAtts = (selectedOrder.attachments || []).filter((a: any) => phaseAttachTypes.includes(a.type));
 
@@ -1154,6 +1095,23 @@ export const Bookings = () => {
                   const totalWt = Array.isArray(item.weights)
                     ? item.weights.reduce((s: number, w: any) => s + (parseFloat(w) || 0), 0)
                     : (item.weightKg || 0);
+                  const isBackorderItem = hasBackorder && totalWt === 0;
+                  if (isBackorderItem) {
+                    return (
+                      <div key={idx} style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', opacity: 0.6, background: 'var(--color-surface-muted)' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {getVariantInfo(item.variantId).label}
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, background: '#ffd43b', color: '#7d5a00', borderRadius: '4px', padding: '1px 6px' }}>Backorder</span>
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                            {item.qty} bun · Pending weight
+                          </div>
+                        </div>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>—</span>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={idx} style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
                       <div style={{ flex: 1 }}>
@@ -1243,13 +1201,6 @@ export const Bookings = () => {
                   </Button>
                 </div>
               )}
-              <Button
-                variant="outline"
-                onClick={() => handleShareQuotation(selectedOrder)}
-                style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start' }}
-              >
-                <Share2 size={14} /> Share Quotation
-              </Button>
             </>
           )}
 
@@ -1432,7 +1383,7 @@ export const Bookings = () => {
       if (field === 'product') {
         let rate = 0;
         for (const p of productsList) {
-          const variant = p.variants?.find((v: any) => v.id === value);
+          const variant = p.variants?.find((v: any) => String(v.id) === String(value));
           if (variant) { rate = variant.rateOverride || 0; break; }
         }
         return { ...item, product: value, rate };

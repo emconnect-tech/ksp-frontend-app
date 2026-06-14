@@ -52,15 +52,22 @@ export const buildQuotationMessage = (orgName: string, order: TemplateOrder): st
     const totalWt = weights.length > 0
       ? weights.reduce((a, b) => a + b, 0)
       : (item.weightKg || 0);
+    const isBackorder = totalWt === 0;
     const rate = item.price || 0;
     const lineTotal = totalWt * rate;
 
-    const wtLine = weights.length > 0
-      ? `Wt: ${weights.join('. ')} kg`
-      : totalWt > 0 ? `Wt: ${totalWt} kg` : `Wt: Pending`;
-    const rateStr = rate > 0 ? `Rate: ₹${rate}/kg | Amt: ₹${lineTotal.toLocaleString()}` : `Rate: TBD`;
+    if (isBackorder) {
+      return `${item.label} _(Backorder — Pending)_\nBun: ${item.qty} | Wt: Pending`;
+    }
 
-    return `${item.label}\nBun: ${item.qty} | ${wtLine}\n${rateStr}`;
+    const wtLine = weights.length > 0
+      ? `Wt: ${weights.join(', ')} kg`
+      : totalWt > 0 ? `Wt: ${totalWt} kg` : `Wt: Pending`;
+    const rateStr = rate > 0 && totalWt > 0
+      ? `₹${rate}/kg × ${totalWt.toFixed(2)} kg = ₹${lineTotal.toLocaleString()}`
+      : rate > 0 ? `Rate: ₹${rate}/kg` : `Rate: TBD`;
+
+    return `${item.label}\nBun: ${item.qty}\n${wtLine}\n${rateStr}`;
   }).join('\n\n');
 
   return (
@@ -90,11 +97,13 @@ export const buildStatusUpdateMessage = (
     const lineTotal = totalWt * rate;
 
     const wtLine = weights.length > 0
-      ? `Wt: ${weights.join('. ')} kg`
+      ? `Wt: ${weights.join(', ')} kg`
       : totalWt > 0 ? `Wt: ${totalWt} kg` : `Wt: Pending`;
-    const rateStr = rate > 0 ? `Rate: ₹${rate}/kg | Amt: ₹${lineTotal.toLocaleString()}` : '';
+    const rateStr = rate > 0 && totalWt > 0
+      ? `₹${rate}/kg × ${totalWt.toFixed(2)} kg = ₹${lineTotal.toLocaleString()}`
+      : rate > 0 ? `Rate: ₹${rate}/kg` : '';
 
-    return `${item.label}\nBun: ${item.qty} | ${wtLine}${rateStr ? `\n${rateStr}` : ''}`;
+    return `${item.label}\nBun: ${item.qty}\n${wtLine}${rateStr ? `\n${rateStr}` : ''}`;
   }).join('\n\n');
 
   const statusLines: Record<string, string> = {

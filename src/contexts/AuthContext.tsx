@@ -14,7 +14,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
   token: string | null;
-  login: (token: string) => void;
+  login: (token: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
 }
@@ -76,17 +76,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeAuth();
   }, []);
 
-  const login = (newToken: string) => {
+  const login = async (newToken: string): Promise<void> => {
     try {
       const payload = JSON.parse(atob(newToken.split('.')[1]));
+      let role: string = payload.role || 'USER';
+      let status: string = payload.status || 'ACTIVE';
+      let name: string | undefined;
+
+      if (!config.USE_MOCK_API) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/v1/users/me`, {
+            headers: { 'Authorization': `Bearer ${newToken}` }
+          });
+          if (res.ok) {
+            const liveData = await res.json();
+            role = liveData.role ?? role;
+            status = liveData.status ?? status;
+            name = liveData.name;
+          }
+        } catch (_) { /* use JWT fallback */ }
+      }
+
       const userData: User = {
         id: payload.sub,
-        role: payload.role || 'USER',
-        status: payload.status || 'ACTIVE',
+        role,
+        status,
         phone: payload.phone,
-        orgId: payload.orgId
+        orgId: payload.orgId,
+        name,
       };
-      
+
       localStorage.setItem('ksp_token', newToken);
       setToken(newToken);
       setUser(userData);
