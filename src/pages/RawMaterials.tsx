@@ -5,7 +5,6 @@ import { Card } from '../design-system/components/ui/Card';
 import { Input } from '../design-system/components/ui/Input';
 import { Button } from '../design-system/components/ui/Button';
 import { SegmentedControl } from '../design-system/components/ui/SegmentedControl';
-import { Badge } from '../design-system/components/ui/Badge';
 import { Pagination } from '../design-system/components/ui/Pagination';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';

@@ -8,7 +8,6 @@ import { useAuth } from '../contexts/AuthContext';
 
 /* ───────────────────── tiny helpers ───────────────────── */
 const fmt = (n: number) => `${Math.round(n * 100) / 100}`;
-const pct = (num: number, den: number) => den > 0 ? `${((num / den) * 100).toFixed(1)}%` : '—';
 
 export const Reports = () => {
   const { token } = useAuth();
